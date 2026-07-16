@@ -5,6 +5,9 @@ import { PlayerAction } from "./PlayerAction";
 
 export default class PokerEngine {
   room: Room;
+  roundTimer?: NodeJS.Timeout;
+
+  onRoundChange?: () => void;
 
   constructor(room: Room) {
     this.room = room;
@@ -17,77 +20,114 @@ export default class PokerEngine {
   nextTurn() {
     const totalPlayers = this.room.players.length;
 
+    if (totalPlayers === 0) return;
+
+    let count = 0;
+
     do {
       this.room.currentPlayerIndex =
         (this.room.currentPlayerIndex + 1) % totalPlayers;
+
+      count++;
+
+      if (count > totalPlayers) {
+        return;
+      }
     } while (this.room.players[this.room.currentPlayerIndex].folded);
   }
 
-  fold(player: Player) {
-    player.fold();
-
-    console.log(`${player.username} Fold`);
-
-    this.nextTurn();
-  }
-
-  check(player: Player) {
-    console.log(`${player.username} Check`);
-
-    this.nextTurn();
-  }
-
-  call(player: Player) {
-    const highestBet = Math.max(...this.room.players.map((p) => p.currentBet));
-
-    const amount = highestBet - player.currentBet;
-
-    if (amount > 0) {
-      player.bet(amount);
-      this.room.pot += amount;
+  nextRound() {
+    // پاک کردن تایمر قبلی
+    if (this.roundTimer) {
+      clearTimeout(this.roundTimer);
+      this.roundTimer = undefined;
     }
 
-    console.log(`${player.username} Call ${amount}`);
+    // ریست شرط های راند
+    this.room.players.forEach((p) => {
+      p.currentBet = 0;
 
-    this.nextTurn();
-  }
+      (p as any).actedThisRound = false;
+    });
 
-  raise(player: Player, amount: number) {
-    const highestBet = Math.max(...this.room.players.map((p) => p.currentBet));
+    this.room.currentBet = 0;
 
-    const total = highestBet - player.currentBet + amount;
+    // تغییر وضعیت بازی
 
-    player.bet(total);
-
-    this.room.pot += total;
-
-    console.log(`${player.username} Raise ${amount}`);
-
-    this.nextTurn();
-  }
-  nextRound() {
     switch (this.room.state) {
       case GameState.PRE_FLOP:
         this.room.dealFlop();
+
         this.room.state = GameState.FLOP;
+
         break;
 
       case GameState.FLOP:
         this.room.dealTurn();
+
         this.room.state = GameState.TURN;
+
         break;
 
       case GameState.TURN:
         this.room.dealRiver();
+
         this.room.state = GameState.RIVER;
+
         break;
 
       case GameState.RIVER:
         this.room.state = GameState.SHOWDOWN;
-        break;
+
+        console.log("SHOWDOWN");
+
+        return;
     }
+
+    // پیدا کردن شروع کننده راند جدید
+    const smallBlindIndex = this.room.players.findIndex((p) => p.smallBlind);
+
+    let start = smallBlindIndex;
+
+    let count = 0;
+
+    while (
+      this.room.players[start].folded &&
+      count < this.room.players.length
+    ) {
+      start = (start + 1) % this.room.players.length;
+
+      count++;
+    }
+
+    this.room.currentPlayerIndex = start;
+
+    console.log(
+      "NEXT ROUND:",
+      this.room.state,
+      "TURN:",
+      this.getCurrentPlayer()?.username,
+    );
+
+    if (this.onRoundChange) {
+      this.onRoundChange();
+    }
+
+    console.log("SET TURN TO:", this.getCurrentPlayer()?.username);
   }
+
   playerAction(player: Player, action: PlayerAction, amount = 0) {
+    // اگر دست تمام شده
+    if (this.room.state === GameState.SHOWDOWN) {
+      return;
+    }
+    console.log(
+      "CURRENT BEFORE ACTION:",
+      this.getCurrentPlayer()?.username,
+      "ACTION PLAYER:",
+      player.username,
+    );
+
     switch (action) {
       case PlayerAction.FOLD:
         player.fold();
@@ -97,33 +137,86 @@ export default class PokerEngine {
       case PlayerAction.CHECK:
         break;
 
-      case PlayerAction.CALL:
-        this.call(player);
+      case PlayerAction.CALL: {
+        const highestBet = Math.max(
+          ...this.room.players.map((p) => p.currentBet),
+        );
+
+        const callAmount = highestBet - player.currentBet;
+
+        if (callAmount > 0) {
+          player.bet(callAmount);
+
+          this.room.pot += callAmount;
+        }
 
         break;
+      }
 
-      case PlayerAction.RAISE:
-        this.raise(player, amount);
+      case PlayerAction.RAISE: {
+        const highestBet = Math.max(
+          ...this.room.players.map((p) => p.currentBet),
+        );
+
+        const total = highestBet - player.currentBet + amount;
+
+        player.bet(total);
+
+        this.room.pot += total;
+
+        this.room.currentBet = Math.max(
+          ...this.room.players.map((p) => p.currentBet),
+        );
 
         break;
+      }
 
-      case PlayerAction.ALL_IN:
-        player.bet(player.chips);
+      case PlayerAction.ALL_IN: {
+        const chips = player.chips;
 
-        this.room.pot += player.currentBet;
+        player.bet(chips);
+
+        this.room.pot += chips;
 
         break;
+      }
     }
 
     player.lastAction = action;
 
+    (player as any).actedThisRound = true;
+
+    console.log("ACTION:", player.username, action);
+
+    // آیا راند تمام شده؟
+
+    if (this.isBettingRoundFinished()) {
+      console.log("ROUND FINISHED WAIT...");
+
+      this.roundTimer = setTimeout(() => {
+        this.nextRound();
+      }, 3000);
+
+      return;
+    }
+
+    // نفر بعدی
+
     this.nextTurn();
   }
-  private isBettingRoundFinished(): boolean {
+
+  isBettingRoundFinished() {
     const activePlayers = this.room.players.filter((p) => !p.folded);
 
+    if (activePlayers.length <= 1) {
+      return true;
+    }
+
+    const highestBet = Math.max(...activePlayers.map((p) => p.currentBet));
+
     return activePlayers.every(
-      (player) => player.currentBet === this.room.currentBet || player.allIn,
+      (p) =>
+        (p as any).actedThisRound && (p.currentBet === highestBet || p.allIn),
     );
   }
 }

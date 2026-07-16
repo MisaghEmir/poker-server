@@ -66,3 +66,28 @@ console.log(engine.getCurrentPlayer().username);
 engine.fold(engine.getCurrentPlayer());
 
 console.log(engine.getCurrentPlayer().username);
+
+engine.call(engine.getCurrentPlayer()); // Emir باید ۳ تا اضافه بذاره
+
+console.log("Pot:", room.pot);
+room.players.forEach((p) => 
+  console.log(p.username, "Chips:", p.chips, "Bet:", p.currentBet)
+);
+
+console.log("--- بعد از فولد Sara ---");
+console.log("نوبت فعلی:", engine.getCurrentPlayer().username);
+
+engine.call(engine.getCurrentPlayer()); // فرض: نوبت Emir - باید Call یا Raise رو جواب بده
+
+console.log("نوبت بعدی:", engine.getCurrentPlayer().username);
+
+room.addPlayer(new Player("a", "sahar"));
+
+engine.call(engine.getCurrentPlayer());
+console.log("نوبت بعدی:", engine.getCurrentPlayer().username);
+
+engine.call(engine.getCurrentPlayer());
+console.log("نوبت بعدی:", engine.getCurrentPlayer().username);
+
+engine.call(engine.getCurrentPlayer());
+console.log("نوبت بعدی:", engine.getCurrentPlayer().username);

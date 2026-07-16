@@ -75,11 +75,17 @@ export default class Room {
     const dealer = this.players[this.dealerIndex];
     dealer.dealer = true;
 
-    const sbIndex = (this.dealerIndex + 1) % this.players.length;
-    const bbIndex = (this.dealerIndex + 2) % this.players.length;
-
-    this.players[sbIndex].smallBlind = true;
-    this.players[bbIndex].bigBlind = true;
+    if (this.players.length === 2) {
+      // Heads-up: dealer = small blind
+      dealer.smallBlind = true;
+      const bbIndex = (this.dealerIndex + 1) % this.players.length;
+      this.players[bbIndex].bigBlind = true;
+    } else {
+      const sbIndex = (this.dealerIndex + 1) % this.players.length;
+      const bbIndex = (this.dealerIndex + 2) % this.players.length;
+      this.players[sbIndex].smallBlind = true;
+      this.players[bbIndex].bigBlind = true;
+    }
   }
 
   // دریافت Blind ها
@@ -95,6 +101,8 @@ export default class Room {
     bb.bet(this.bigBlindAmount);
 
     this.pot = this.smallBlindAmount + this.bigBlindAmount;
+
+    this.currentBet = this.bigBlindAmount;
   }
 
   // شروع بازی
@@ -108,6 +116,7 @@ export default class Room {
 
     this.communityCards = [];
     this.pot = 0;
+    this.currentBet = 0;
 
     this.state = GameState.PRE_FLOP;
 
@@ -194,5 +203,17 @@ export default class Room {
     });
 
     console.log("===========================");
+  }
+  getFirstPlayerAfterDealer() {
+    let index = (this.dealerIndex + 1) % this.players.length;
+
+    let count = 0;
+
+    while (this.players[index].folded && count < this.players.length) {
+      index = (index + 1) % this.players.length;
+      count++;
+    }
+
+    return index;
   }
 }

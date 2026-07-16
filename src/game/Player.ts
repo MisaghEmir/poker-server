@@ -11,7 +11,7 @@ export default class Player {
 
   currentBet = 0;
   totalBet = 0;
-
+  actedThisRound = false;
   folded = false;
   allIn = false;
 
