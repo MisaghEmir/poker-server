@@ -24,6 +24,8 @@ export default class Room {
   // مجموع شرط‌ها
   pot = 0;
 
+  winner?: Player;
+
   // حداکثر تعداد بازیکنان
   maxPlayers = 5;
 
@@ -145,6 +147,10 @@ export default class Room {
   // Flop
   dealFlop() {
     this.deck.draw(); // Burn
+
+    this.players.forEach((player) => {
+      player.lastAction = null;
+    });
 
     this.communityCards.push(this.deck.draw());
     this.communityCards.push(this.deck.draw());

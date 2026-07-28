@@ -43,12 +43,11 @@ export function pokerGameSocket(io: Server) {
 
         const engine = new PokerEngine(room);
 
-        engine.onRoundChange = () => {
+        engine.onUpdate = () => {
+          emitGameUpdate(io, roomId, room);
+
           setTimeout(() => {
-            checkBotTurn(io, roomId, {
-              room,
-              engine,
-            });
+            checkBotTurn(io, roomId, { room, engine });
           }, 100);
         };
 
@@ -220,6 +219,7 @@ async function checkBotTurn(
     }
 
     if (game.room.state === GameState.SHOWDOWN) {
+      console.log("CHECKBOT SHOWDOWN");
       return;
     }
 
@@ -259,6 +259,13 @@ function serialize(room: Room, userId?: string) {
 
     state: room.state,
 
+    winner: room.winner
+      ? {
+          id: room.winner.id,
+          username: room.winner.username,
+        }
+      : null,
+
     players: room.players.map((p) => ({
       id: p.id,
 
@@ -270,6 +277,9 @@ function serialize(room: Room, userId?: string) {
 
       folded: p.folded,
 
+      currentBet: p.currentBet,
+      lastAction: p.lastAction,
+
       dealer: p.dealer,
 
       smallBlind: p.smallBlind,
@@ -278,7 +288,7 @@ function serialize(room: Room, userId?: string) {
 
       isBot: (p as any).isBot ?? false,
 
-      hand: p.id === userId ? p.hand : [],
+      hand: room.state === GameState.SHOWDOWN || p.id === userId ? p.hand : [],
     })),
   };
 }
