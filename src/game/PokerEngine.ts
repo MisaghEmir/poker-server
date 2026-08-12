@@ -151,6 +151,8 @@ export default class PokerEngine {
       case PlayerAction.FOLD:
         player.fold();
 
+        console.log("AFTER FOLD:", player.username, player.folded);
+
         break;
 
       case PlayerAction.CHECK:
@@ -236,6 +238,8 @@ export default class PokerEngine {
     if (this.isBettingRoundFinished()) {
       console.log("ROUND FINISHED WAIT...");
 
+      this.onUpdate?.();
+
       this.roundTimer = setTimeout(() => {
         this.nextRound();
       }, 3000);
@@ -264,6 +268,14 @@ export default class PokerEngine {
   }
 
   showdown() {
+    console.log(
+      this.room.players.map((p) => ({
+        name: p.username,
+        folded: p.folded,
+        hand: p.hand,
+      })),
+    );
+
     const activePlayers = this.room.players.filter((p) => !p.folded);
 
     if (activePlayers.length <= 1) {
@@ -283,6 +295,7 @@ export default class PokerEngine {
     results.sort((a, b) => b.result.score - a.result.score);
 
     this.room.winner = results[0].player;
+    this.room.winnerHand = results[0].result.name;
 
     console.log("WINNER:", results[0].player.username, results[0].result.name);
 
@@ -298,9 +311,17 @@ export default class PokerEngine {
   }
 
   startNextHand() {
+    this.room.winner = null;
     this.room.nextDealer();
     this.room.startGame();
 
     this.onUpdate?.();
+  }
+
+  stop() {
+    if (this.roundTimer) {
+      clearTimeout(this.roundTimer);
+      this.roundTimer = undefined;
+    }
   }
 }

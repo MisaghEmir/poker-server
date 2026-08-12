@@ -31,10 +31,10 @@ export function pokerGameSocket(io: Server) {
         const room = new Room(roomId);
 
         const bots = [
-          new PokerBot("bot1", "Ali Bot", "tight"),
-          new PokerBot("bot2", "Sara Bot", "aggressive"),
-          new PokerBot("bot3", "Reza Bot", "balanced"),
-          new PokerBot("bot4", "Mina Bot", "loose"),
+          new PokerBot("bot1", "Ali", "tight"),
+          new PokerBot("bot2", "Sara", "aggressive"),
+          new PokerBot("bot3", "Reza", "balanced"),
+          new PokerBot("bot4", "Mina", "loose"),
         ];
 
         bots.forEach((bot) => {
@@ -263,6 +263,7 @@ function serialize(room: Room, userId?: string) {
       ? {
           id: room.winner.id,
           username: room.winner.username,
+          hand: room.winnerHand,
         }
       : null,
 
@@ -305,25 +306,50 @@ function removePlayer(socket: Socket, io: Server) {
 
     if (index === -1) continue;
 
-    // console.log(`${userId} left room ${roomId}`);
-
-    // اگر نوبت خودش بود
+    // اگر نوبت خودش بود فولد شود
     if (game.engine.getCurrentPlayer()?.id === userId) {
       game.engine.playerAction(game.room.players[index], PlayerAction.FOLD);
     }
 
+    // حذف بازیکن
     game.room.removePlayer(userId);
 
-    // اگر بازیکنی نمانده
-    if (game.room.players.length === 0) {
+    // آیا بازیکن واقعی مانده؟
+    const humanPlayers = game.room.players.filter((p) => !(p as any).isBot);
+
+    if (humanPlayers.length === 0) {
+      console.log("STOP GAME:", roomId);
+
+      // توقف تایمر راند
+      if (game.engine.roundTimer) {
+        clearTimeout(game.engine.roundTimer);
+        game.engine.roundTimer = undefined;
+      }
+
+      // توقف تایمر بات
+      const botTimer = botTimers.get(roomId);
+      if (botTimer) {
+        clearTimeout(botTimer);
+        botTimers.delete(roomId);
+      }
+
+      // توقف تایمر نوبت
+      const turnTimer = turnTimers.get(roomId);
+      if (turnTimer) {
+        clearTimeout(turnTimer);
+        turnTimers.delete(roomId);
+      }
+
+      // حذف بازی از حافظه
       games.delete(roomId);
-      turnTimers.get(roomId) && clearTimeout(turnTimers.get(roomId)!);
-      turnTimers.delete(roomId);
+
       return;
     }
 
+    // آپدیت برای بازیکنان باقی‌مانده
     emitGameUpdate(io, roomId, game.room);
 
+    // ادامه بازی
     checkBotTurn(io, roomId, game);
 
     return;

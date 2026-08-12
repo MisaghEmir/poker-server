@@ -7,6 +7,7 @@ export interface IUser extends Document {
   avatar: string;
   token: string;
   chips: number;
+  chipsD: number;
   wins: number;
   losses: number;
   gamesPlayed: number;
