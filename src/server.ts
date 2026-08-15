@@ -8,14 +8,15 @@ import { connectDatabase } from "./config/database";
 import { tableSocket } from "./socket/table.socket";
 import { registerSockets } from "./socket";
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 const server = http.createServer(app);
 
-const io = new Server(server,{
- cors:{
-  origin:"*"
- }
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
 });
 
 registerSockets(io);
@@ -24,7 +25,7 @@ async function startServer() {
   try {
     await connectDatabase();
 
-    server.listen(PORT, () => {
+    server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server Running On ${PORT}`);
     });
   } catch (error) {
@@ -35,4 +36,3 @@ async function startServer() {
 }
 
 startServer();
-
