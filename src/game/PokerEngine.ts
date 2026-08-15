@@ -242,14 +242,17 @@ export default class PokerEngine {
 
       this.roundTimer = setTimeout(() => {
         this.nextRound();
-      }, 3000);
+      }, 1000);
 
       return;
     }
 
     // نفر بعدی
 
-    this.nextTurn();
+    setTimeout(() => {
+      this.nextTurn();
+      this.onUpdate?.();
+    }, 2700);
   }
 
   isBettingRoundFinished() {

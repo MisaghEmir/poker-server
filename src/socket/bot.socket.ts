@@ -126,7 +126,7 @@ export function pokerGameSocket(io: Server) {
 
       setTimeout(() => {
         checkBotTurn(io, roomId, game);
-      }, 100);
+      }, 700);
     });
 
     socket.on("leave-game-bot", ({ roomId }) => {
@@ -230,6 +230,9 @@ async function checkBotTurn(
     game.engine.playerAction(player, move.action, move.amount);
 
     emitGameUpdate(io, roomId, game.room);
+
+    // 700ms صبر برای انیمیشن
+    await new Promise((resolve) => setTimeout(resolve, 700));
 
     checkBotTurn(io, roomId, game);
   }, thinkTime);
