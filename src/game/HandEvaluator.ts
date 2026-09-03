@@ -1,189 +1,252 @@
 import { Card } from "./Card";
 
-const ranks: Record<string, number> = {
-  "2": 2,
-  "3": 3,
-  "4": 4,
-  "5": 5,
-  "6": 6,
-  "7": 7,
-  "8": 8,
-  "9": 9,
-  T: 10,
-  J: 11,
-  Q: 12,
-  K: 13,
-  A: 14,
-};
+export interface HandResult {
+  score: number;
+  name: string;
+  winningCards: Card[];
+}
 
 export default class HandEvaluator {
-  static evaluate(hand: Card[], board: Card[]) {
-    const cards = [...hand, ...board];
+  static evaluate(
+    hand: Card[],
+    community: Card[],
+  ): HandResult {
+    const cards = [...hand, ...community];
 
-    const flush = this.checkFlush(cards);
-    const straight = this.checkStraight(cards);
+    const ranks = cards.map((c) => c.rank);
+    const suits = cards.map((c) => c.suit);
 
-    // Royal Flush / Straight Flush
-    if (flush && straight) {
-      const high = straight.high;
+    const rankCount = this.count(ranks);
+    const suitCount = this.count(suits);
 
-      if (high === 14) {
-        return {
-          score: 900,
-          name: "Royal Flush",
-        };
-      }
+    const pairs = Object.entries(rankCount)
+      .filter(([, count]) => count === 2)
+      .map(([rank]) => rank);
+
+    const triples = Object.entries(rankCount)
+      .filter(([, count]) => count === 3)
+      .map(([rank]) => rank);
+
+    const quads = Object.entries(rankCount)
+      .filter(([, count]) => count === 4)
+      .map(([rank]) => rank);
+
+    /**
+     * FOUR OF A KIND
+     */
+    if (quads.length > 0) {
+      const rank = quads[0];
 
       return {
-        score: 800 + high,
-        name: "Straight Flush",
+        score: 800,
+        name: "FOUR OF A KIND",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
       };
     }
 
-    const groups = this.getGroups(cards);
+    /**
+     * FULL HOUSE
+     */
+    if (
+      triples.length > 0 &&
+      pairs.length > 0
+    ) {
+      const tripleRank = triples[0];
+      const pairRank = pairs[0];
 
-    // Four of a kind
-    const four = groups.find((g) => g.count === 4);
-
-    if (four) {
       return {
-        score: 700 + four.rank,
-        name: "Four of a Kind",
+        score: 700,
+        name: "FULL HOUSE",
+        winningCards: cards.filter(
+          (card) =>
+            card.rank === tripleRank ||
+            card.rank === pairRank,
+        ),
       };
     }
 
-    // Full House
-    const three = groups.find((g) => g.count === 3);
-    const pair = groups.find((g) => g.count === 2);
+    /**
+     * FLUSH
+     */
+    const flushSuit = Object.entries(suitCount)
+      .find(([, count]) => count >= 5)?.[0];
 
-    if (three && pair) {
+    if (flushSuit) {
       return {
-        score: 600 + three.rank,
-        name: "Full House",
+        score: 600,
+        name: "FLUSH",
+        winningCards: cards.filter(
+          (card) => card.suit === flushSuit,
+        ),
       };
     }
 
-    // Flush
-    if (flush) {
+    /**
+     * STRAIGHT
+     */
+    const straightRanks =
+      this.getStraightRanks(ranks);
+
+    if (straightRanks.length === 5) {
       return {
-        score: 500 + flush.high,
-        name: "Flush",
+        score: 500,
+        name: "STRAIGHT",
+        winningCards: cards.filter(
+          (card) =>
+            straightRanks.includes(
+              this.rankValue(card.rank),
+            ),
+        ),
       };
     }
 
-    // Straight
-    if (straight) {
+    /**
+     * THREE OF A KIND
+     */
+    if (triples.length > 0) {
+      const rank = triples[0];
+
       return {
-        score: 400 + straight.high,
-        name: "Straight",
+        score: 400,
+        name: "THREE OF A KIND",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
       };
     }
 
-    // Three of kind
-    if (three) {
-      return {
-        score: 300 + three.rank,
-        name: "Three of a Kind",
-      };
-    }
-
-    // Two Pair
-    const pairs = groups.filter((g) => g.count === 2);
-
+    /**
+     * TWO PAIR
+     */
     if (pairs.length >= 2) {
+      const pairRanks = pairs.slice(0, 2);
+
       return {
-        score: 200 + pairs[0].rank,
-        name: "Two Pair",
+        score: 300,
+        name: "TWO PAIR",
+        winningCards: cards.filter(
+          (card) =>
+            pairRanks.includes(card.rank),
+        ),
       };
     }
 
-    // One Pair
+    /**
+     * ONE PAIR
+     */
     if (pairs.length === 1) {
+      const rank = pairs[0];
+
       return {
-        score: 100 + pairs[0].rank,
-        name: "One Pair",
+        score: 200,
+        name: "PAIR",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
       };
     }
 
-    // High Card
-    const high = Math.max(...cards.map((c) => ranks[c.rank]));
+    /**
+     * HIGH CARD
+     */
+    const sorted = [...cards].sort(
+      (a, b) =>
+        this.rankValue(b.rank) -
+        this.rankValue(a.rank),
+    );
+
+    const highCard = sorted[0];
 
     return {
-      score: high,
-      name: "High Card",
+      score: 100,
+      name: "HIGH CARD",
+      winningCards: highCard
+        ? [highCard]
+        : [],
     };
   }
 
-  private static getGroups(cards: Card[]) {
-    const map: Record<number, number> = {};
+  private static count(
+    arr: string[],
+  ): Record<string, number> {
+    const result: Record<
+      string,
+      number
+    > = {};
 
-    cards.forEach((card) => {
-      const value = ranks[card.rank];
-
-      map[value] = (map[value] || 0) + 1;
+    arr.forEach((item) => {
+      result[item] =
+        (result[item] || 0) + 1;
     });
 
-    return Object.entries(map)
-      .map(([rank, count]) => ({
-        rank: Number(rank),
-        count,
-      }))
-      .sort((a, b) => {
-        if (a.count !== b.count) return b.count - a.count;
-
-        return b.rank - a.rank;
-      });
+    return result;
   }
 
-  private static checkFlush(cards: Card[]) {
-    const suits: Record<string, Card[]> = {};
+  private static rankValue(
+    rank: string,
+  ): number {
+    switch (rank) {
+      case "A":
+        return 14;
 
-    cards.forEach((card) => {
-      if (!suits[card.suit]) suits[card.suit] = [];
+      case "K":
+        return 13;
 
-      suits[card.suit].push(card);
-    });
+      case "Q":
+        return 12;
 
-    for (const suit in suits) {
-      if (suits[suit].length >= 5) {
-        const high = Math.max(...suits[suit].map((c) => ranks[c.rank]));
+      case "J":
+        return 11;
 
-        return {
-          suit,
-          high,
-        };
-      }
+      default:
+        return Number(rank);
     }
-
-    return null;
   }
 
-  private static checkStraight(cards: Card[]) {
-    const values = [...new Set(cards.map((c) => ranks[c.rank]))].sort(
-      (a, b) => b - a,
-    );
+  private static getStraightRanks(
+    ranks: string[],
+  ): number[] {
+    const values = [
+      ...new Set(
+        ranks.map((rank) =>
+          this.rankValue(rank),
+        ),
+      ),
+    ].sort((a, b) => a - b);
 
-    // A can be low in A2345
-    if (values.includes(14)) {
-      values.push(1);
+    /**
+     * A2345
+     */
+    if (
+      values.includes(14) &&
+      values.includes(2) &&
+      values.includes(3) &&
+      values.includes(4) &&
+      values.includes(5)
+    ) {
+      return [14, 2, 3, 4, 5];
     }
 
-    let count = 1;
+    let run: number[] = [];
 
-    for (let i = 0; i < values.length - 1; i++) {
-      if (values[i] - 1 === values[i + 1]) {
-        count++;
-
-        if (count >= 5) {
-          return {
-            high: values[i - 3],
-          };
-        }
+    for (let i = 0; i < values.length; i++) {
+      if (
+        run.length === 0 ||
+        values[i] ===
+          run[run.length - 1] + 1
+      ) {
+        run.push(values[i]);
       } else {
-        count = 1;
+        run = [values[i]];
+      }
+
+      if (run.length >= 5) {
+        return run.slice(-5);
       }
     }
 
-    return null;
+    return [];
   }
 }

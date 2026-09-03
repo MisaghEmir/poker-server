@@ -58,15 +58,18 @@ export default class Player {
   }
 
   bet(amount: number) {
-    if (amount > this.chips) {
-      throw new Error("Not enough chips.");
+    if (amount <= 0) {
+      return;
     }
 
-    this.chips -= amount;
+    // هیچوقت بیشتر از چیپ موجود شرط نزن
+    const actualAmount = Math.min(amount, this.chips);
 
-    this.currentBet += amount;
-    this.totalBet += amount;
+    this.chips -= actualAmount;
+    this.currentBet += actualAmount;
+    this.totalBet += actualAmount;
 
+    // اگر همه چیپ‌ها مصرف شد
     if (this.chips === 0) {
       this.allIn = true;
     }

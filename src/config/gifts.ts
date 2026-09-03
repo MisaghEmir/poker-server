@@ -1,0 +1,73 @@
+export const GIFTS = [
+  {
+    id: "free",
+    name: "Free Gift",
+    level: 1,
+    unlockLevel: 0,
+    unlockTime: 12,
+    minReward: 100,
+    maxReward: 500,
+    locked: false,
+    requiresAd: true,
+  },
+
+  {
+    id: "silver",
+    name: "Silver Gift",
+    level: 2,
+    unlockLevel: 5,
+    unlockTime: 6,
+    minReward: 500,
+    maxReward: 2000,
+    locked: true,
+    requiresAd: false,
+  },
+
+  {
+    id: "gold",
+    name: "Gold Gift",
+    level: 3,
+    unlockLevel: 10,
+    unlockTime: 12,
+    minReward: 2000,
+    maxReward: 7000,
+    locked: true,
+    requiresAd: false,
+  },
+
+  {
+    id: "diamond",
+    name: "Diamond Gift",
+    level: 4,
+    unlockLevel: 20,
+    unlockTime: 24,
+    minReward: 5000,
+    maxReward: 20000,
+    locked: true,
+    requiresAd: false,
+  },
+
+  {
+    id: "royal",
+    name: "Royal Gift",
+    level: 5,
+    unlockLevel: 30,
+    unlockTime: 48,
+    minReward: 15000,
+    maxReward: 50000,
+    locked: true,
+    requiresAd: false,
+  },
+
+  {
+    id: "legendary",
+    name: "Legendary Gift",
+    level: 6,
+    unlockLevel: 50,
+    unlockTime: 72,
+    minReward: 30000,
+    maxReward: 100000,
+    locked: true,
+    requiresAd: false,
+  },
+];

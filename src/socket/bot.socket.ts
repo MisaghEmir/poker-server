@@ -24,7 +24,7 @@ export function pokerGameSocket(io: Server) {
   io.on("connection", (socket: Socket) => {
     console.log("socket:", socket.id);
 
-    socket.on("join-game-bot", ({ roomId, userId, username }) => {
+    socket.on("join-game-bot", ({ roomId, userId, username,chip }) => {
       let game = games.get(roomId);
 
       if (!game) {
@@ -62,7 +62,7 @@ export function pokerGameSocket(io: Server) {
       const existPlayer = game.room.players.find((p) => p.id === userId);
 
       if (!existPlayer) {
-        const player = new Player(userId, username);
+        const player = new Player(userId, username,chip);
 
         game.room.addPlayer(player);
       }
@@ -267,9 +267,9 @@ function serialize(room: Room, userId?: string) {
           id: room.winner.id,
           username: room.winner.username,
           hand: room.winnerHand,
+          winnerCards: room.winnerCards,
         }
       : null,
-
     players: room.players.map((p) => ({
       id: p.id,
 

@@ -7,9 +7,42 @@ const TableSchema = new mongoose.Schema(
       default: "Poker Table",
     },
 
+    // Private / Public
+    isPrivate: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    // فقط برای میزهای خصوصی
+    tableCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+
+    // نوع میز / Stakes
+    // مثال: "1 / 2" ، "2 / 4" ، "5 / 10"
+    stakes: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    // تعداد جایگاه‌های میز
     maxPlayers: {
       type: Number,
       default: 5,
+      min: 2,
+      max: 5,
+    },
+
+    // حداقل چیپ برای ورود به میز
+    buyIn: {
+      type: Number,
+      default: 1000,
+      min: 1,
     },
 
     players: [
@@ -27,6 +60,7 @@ const TableSchema = new mongoose.Schema(
         seat: {
           type: Number,
         },
+
         socketId: {
           type: String,
         },

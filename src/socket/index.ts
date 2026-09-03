@@ -1,10 +1,16 @@
-import { pokerGameSocket } from "./bot.socket";
-import { tableSocket } from "./table.socket";
 import { Server } from "socket.io";
 
-export function registerSockets(io: Server){
+import { pokerGameSocket } from "./bot.socket";
+import { tableSocket } from "./table.socket";
+import { onlineGameSocket } from "./onlineGameSocket";
+import { privateGameSocket } from "./privateTableSocket";
 
- tableSocket(io);
- pokerGameSocket(io);
+export function registerSockets(io: Server) {
+  tableSocket(io);
 
+  pokerGameSocket(io);
+
+  onlineGameSocket(io);
+
+  privateGameSocket(io);
 }

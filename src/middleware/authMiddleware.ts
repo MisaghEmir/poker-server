@@ -6,30 +6,58 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
+interface JwtPayload {
+  userId: string;
+}
+
 export const authMiddleware = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  const id = req.headers.id as string;
-  const user = await User.findById(id).lean();
-  const userToken = user?.token;
-
-  if (!token) {
-    return res.status(401).json({
-      message: "No Token",
-    });
-  }
-
   try {
-    if (token === user?.token) {
-      next();
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        message: "No Authorization Header",
+      });
     }
-  } catch {
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        message: "No Token",
+      });
+    }
+
+    // بررسی JWT
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET!
+    ) as JwtPayload;
+
+    // پیدا کردن کاربر از userId داخل JWT
+    const user = await User.findById(decoded.userId).select(
+      "-password"
+    );
+
+    if (!user) {
+      return res.status(401).json({
+        message: "User not found",
+      });
+    }
+
+    // ذخیره کاربر داخل request
+    req.user = user;
+
+    next();
+  } catch (error) {
+    console.log("AUTH ERROR:", error);
+
     return res.status(401).json({
-      message: "Invalid Token",
+      message: "Invalid or expired token",
     });
   }
-  return;
 };

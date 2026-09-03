@@ -1,115 +1,252 @@
 import { Card } from "../Card";
 
+export interface HandResult {
+  score: number;
+  name: string;
+  winningCards: Card[];
+}
+
 export default class HandEvaluator {
-  static evaluate(hand: Card[], community: Card[]): number {
+  static evaluate(
+    hand: Card[],
+    community: Card[],
+  ): HandResult {
     const cards = [...hand, ...community];
 
     const ranks = cards.map((c) => c.rank);
-
     const suits = cards.map((c) => c.suit);
 
     const rankCount = this.count(ranks);
-
     const suitCount = this.count(suits);
 
-    const pairs = Object.values(rankCount).filter(
-      (v: number) => v === 2,
-    ).length;
+    const pairs = Object.entries(rankCount)
+      .filter(([, count]) => count === 2)
+      .map(([rank]) => rank);
 
-    const three = Object.values(rankCount).some((v: number) => v === 3);
+    const triples = Object.entries(rankCount)
+      .filter(([, count]) => count === 3)
+      .map(([rank]) => rank);
 
-    const four = Object.values(rankCount).some((v: number) => v === 4);
+    const quads = Object.entries(rankCount)
+      .filter(([, count]) => count === 4)
+      .map(([rank]) => rank);
 
-    const flush = Object.values(suitCount).some((v: number) => v >= 5);
+    /**
+     * FOUR OF A KIND
+     */
+    if (quads.length > 0) {
+      const rank = quads[0];
 
-    const straight = this.hasStraight(ranks);
+      return {
+        score: 800,
+        name: "FOUR OF A KIND",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
+      };
+    }
 
-    // Straight Flush
-    if (flush && straight) return 900;
+    /**
+     * FULL HOUSE
+     */
+    if (
+      triples.length > 0 &&
+      pairs.length > 0
+    ) {
+      const tripleRank = triples[0];
+      const pairRank = pairs[0];
 
-    // Four of a kind
-    if (four) return 800;
+      return {
+        score: 700,
+        name: "FULL HOUSE",
+        winningCards: cards.filter(
+          (card) =>
+            card.rank === tripleRank ||
+            card.rank === pairRank,
+        ),
+      };
+    }
 
-    // Full House
-    if (three && pairs > 0) return 700;
+    /**
+     * FLUSH
+     */
+    const flushSuit = Object.entries(suitCount)
+      .find(([, count]) => count >= 5)?.[0];
 
-    // Flush
-    if (flush) return 600;
+    if (flushSuit) {
+      return {
+        score: 600,
+        name: "FLUSH",
+        winningCards: cards.filter(
+          (card) => card.suit === flushSuit,
+        ),
+      };
+    }
 
-    // Straight
-    if (straight) return 500;
+    /**
+     * STRAIGHT
+     */
+    const straightRanks =
+      this.getStraightRanks(ranks);
 
-    // Three of a kind
-    if (three) return 400;
+    if (straightRanks.length === 5) {
+      return {
+        score: 500,
+        name: "STRAIGHT",
+        winningCards: cards.filter(
+          (card) =>
+            straightRanks.includes(
+              this.rankValue(card.rank),
+            ),
+        ),
+      };
+    }
 
-    // Two Pair
-    if (pairs >= 2) return 300;
+    /**
+     * THREE OF A KIND
+     */
+    if (triples.length > 0) {
+      const rank = triples[0];
 
-    // Pair
-    if (pairs === 1) return 200;
+      return {
+        score: 400,
+        name: "THREE OF A KIND",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
+      };
+    }
 
-    // High Card
-    return 100;
+    /**
+     * TWO PAIR
+     */
+    if (pairs.length >= 2) {
+      const pairRanks = pairs.slice(0, 2);
+
+      return {
+        score: 300,
+        name: "TWO PAIR",
+        winningCards: cards.filter(
+          (card) =>
+            pairRanks.includes(card.rank),
+        ),
+      };
+    }
+
+    /**
+     * ONE PAIR
+     */
+    if (pairs.length === 1) {
+      const rank = pairs[0];
+
+      return {
+        score: 200,
+        name: "PAIR",
+        winningCards: cards.filter(
+          (card) => card.rank === rank,
+        ),
+      };
+    }
+
+    /**
+     * HIGH CARD
+     */
+    const sorted = [...cards].sort(
+      (a, b) =>
+        this.rankValue(b.rank) -
+        this.rankValue(a.rank),
+    );
+
+    const highCard = sorted[0];
+
+    return {
+      score: 100,
+      name: "HIGH CARD",
+      winningCards: highCard
+        ? [highCard]
+        : [],
+    };
   }
 
-  private static count(arr: string[]): Record<string, number> {
-    const result: Record<string, number> = {};
+  private static count(
+    arr: string[],
+  ): Record<string, number> {
+    const result: Record<
+      string,
+      number
+    > = {};
 
     arr.forEach((item) => {
-      result[item] = (result[item] || 0) + 1;
+      result[item] =
+        (result[item] || 0) + 1;
     });
 
     return result;
   }
 
-  private static hasStraight(ranks: string[]): boolean {
-    const values = ranks
-      .map((rank) => {
-        switch (rank) {
-          case "A":
-            return 14;
+  private static rankValue(
+    rank: string,
+  ): number {
+    switch (rank) {
+      case "A":
+        return 14;
 
-          case "K":
-            return 13;
+      case "K":
+        return 13;
 
-          case "Q":
-            return 12;
+      case "Q":
+        return 12;
 
-          case "J":
-            return 11;
+      case "J":
+        return 11;
 
-          default:
-            return Number(rank);
-        }
-      })
-      .sort((a, b) => a - b);
+      default:
+        return Number(rank);
+    }
+  }
 
-    // حذف تکراری‌ها
-    const unique = [...new Set(values)];
+  private static getStraightRanks(
+    ranks: string[],
+  ): number[] {
+    const values = [
+      ...new Set(
+        ranks.map((rank) =>
+          this.rankValue(rank),
+        ),
+      ),
+    ].sort((a, b) => a - b);
 
-    let count = 1;
+    /**
+     * A2345
+     */
+    if (
+      values.includes(14) &&
+      values.includes(2) &&
+      values.includes(3) &&
+      values.includes(4) &&
+      values.includes(5)
+    ) {
+      return [14, 2, 3, 4, 5];
+    }
 
-    for (let i = 1; i < unique.length; i++) {
-      if (unique[i] === unique[i - 1] + 1) {
-        count++;
+    let run: number[] = [];
 
-        if (count >= 5) return true;
+    for (let i = 0; i < values.length; i++) {
+      if (
+        run.length === 0 ||
+        values[i] ===
+          run[run.length - 1] + 1
+      ) {
+        run.push(values[i]);
       } else {
-        count = 1;
+        run = [values[i]];
+      }
+
+      if (run.length >= 5) {
+        return run.slice(-5);
       }
     }
 
-    // حالت A2345
-    if (
-      unique.includes(14) &&
-      unique.includes(2) &&
-      unique.includes(3) &&
-      unique.includes(4) &&
-      unique.includes(5)
-    ) {
-      return true;
-    }
-
-    return false;
+    return [];
   }
 }
