@@ -9,26 +9,45 @@ export default class PokerEngine {
   roundTimer?: NodeJS.Timeout;
 
   onUpdate?: () => void;
+  onWin?: (playerId: string, amount: number) => void;
 
   constructor(room: Room) {
     this.room = room;
   }
 
   // =====================================================
-  // CURRENT PLAYER
+  // HELPERS
   // =====================================================
 
   getCurrentPlayer(): Player {
     return this.room.players[this.room.currentPlayerIndex];
   }
 
+  /** بازیکنانی که فولد نکرده‌اند */
+  getActivePlayers(): Player[] {
+    return this.room.players.filter((p) => !p.folded);
+  }
+
+  /** بازیکنانی که هنوز می‌توانند شرط ببندند (نه فولد، نه All-In) */
+  getPlayersWhoCanAct(): Player[] {
+    return this.room.players.filter((p) => !p.folded && !p.allIn);
+  }
+
+  /**
+   * آیا دیگر شرط‌بندی ممکن نیست؟
+   * یعنی کمتر از ۲ نفر باقی مانده که بتوانند بازی کنند.
+   * در این حالت باید بورد تا River پخش شود و Showdown شود.
+   */
+  isActionClosed(): boolean {
+    return this.getPlayersWhoCanAct().length <= 1;
+  }
+
   // =====================================================
-  // NEXT TURN
+  // NEXT TURN  (فولد + All-In را رد می‌کند)
   // =====================================================
 
   nextTurn() {
     const totalPlayers = this.room.players.length;
-
     if (totalPlayers === 0) return;
 
     let count = 0;
@@ -38,11 +57,66 @@ export default class PokerEngine {
         (this.room.currentPlayerIndex + 1) % totalPlayers;
 
       count++;
+      if (count > totalPlayers) return;
 
-      if (count > totalPlayers) {
+      const p = this.room.players[this.room.currentPlayerIndex];
+      // هم فولد و هم All-In را رد کن
+      if (!p.folded && !p.allIn) break;
+    } while (true);
+  }
+
+  // =====================================================
+  // RUN BOARD TO RIVER + SHOWDOWN
+  // =====================================================
+
+  /**
+   * کارت‌های باقی‌مانده را یکی‌یکی پخش می‌کند
+   * و در نهایت Showdown می‌کند.
+   */
+  runOutBoardAndShowdown() {
+    console.log("🃏 ACTION CLOSED → RUNNING BOARD TO RIVER");
+
+    const dealNext = () => {
+      if (this.room.communityCards.length >= 5) {
+        this.room.state = GameState.SHOWDOWN;
+        this.onUpdate?.();
+        this.showdown();
         return;
       }
-    } while (this.room.players[this.room.currentPlayerIndex].folded);
+
+      if (this.room.communityCards.length === 0) {
+        this.room.dealFlop();
+        this.room.state = GameState.FLOP;
+      } else if (this.room.communityCards.length === 3) {
+        this.room.dealTurn();
+        this.room.state = GameState.TURN;
+      } else if (this.room.communityCards.length === 4) {
+        this.room.dealRiver();
+        this.room.state = GameState.RIVER;
+      }
+
+      console.log(
+        "🃏 DEALT →",
+        this.room.state,
+        "cards:",
+        this.room.communityCards.length,
+      );
+
+      this.onUpdate?.();
+
+      // کمی تأخیر برای UI
+      this.roundTimer = setTimeout(dealNext, 900);
+    };
+
+    // اگر همین الان ۵ کارت داریم مستقیم showdown
+    if (this.room.communityCards.length >= 5) {
+      this.room.state = GameState.SHOWDOWN;
+      this.onUpdate?.();
+      this.showdown();
+      return;
+    }
+
+    dealNext();
   }
 
   // =====================================================
@@ -50,146 +124,83 @@ export default class PokerEngine {
   // =====================================================
 
   nextRound() {
-    // پاک کردن تایمر قبلی
     if (this.roundTimer) {
       clearTimeout(this.roundTimer);
       this.roundTimer = undefined;
     }
 
-    const activePlayers = this.room.players.filter((p) => !p.folded);
+    const activePlayers = this.getActivePlayers();
 
-    // =====================================================
-    // فقط یک بازیکن باقی مانده
-    // =====================================================
-
+    // فقط یک بازیکن → برنده با فولد
     if (activePlayers.length <= 1) {
       if (activePlayers.length === 1) {
         const winner = activePlayers[0];
-
         this.room.winner = winner;
 
-        winner.chips += this.room.pot;
+        const wonAmount = this.room.pot;
+        winner.chips += wonAmount;
+        this.onWin?.(winner.id, wonAmount);
 
         this.room.pot = 0;
-
         this.room.state = GameState.SHOWDOWN;
 
-        console.log("🏆 WINNER BY NEXT ROUND:", winner.username);
-
+        console.log("🏆 WINNER BY FOLD (nextRound):", winner.username);
         this.onUpdate?.();
 
-        setTimeout(() => {
-          this.startNextHand();
-        }, 5000);
+        setTimeout(() => this.startNextHand(), 5000);
       }
-
       return;
     }
 
-    // =====================================================
-    // اگر همه بازیکنان All-In هستند
-    //
-    // باید کارت‌های باقی‌مانده تا River پخش شوند
-    // و سپس مستقیم Showdown
-    // =====================================================
-
-    if (activePlayers.every((p) => p.allIn)) {
-      console.log("🔥 ALL PLAYERS ALL-IN → RUNNING BOARD TO RIVER");
-
-      while (this.room.communityCards.length < 5) {
-        if (this.room.communityCards.length === 0) {
-          this.room.dealFlop();
-
-          this.room.state = GameState.FLOP;
-        } else if (this.room.communityCards.length === 3) {
-          this.room.dealTurn();
-
-          this.room.state = GameState.TURN;
-        } else if (this.room.communityCards.length === 4) {
-          this.room.dealRiver();
-
-          this.room.state = GameState.RIVER;
-        } else {
-          break;
-        }
-      }
-
-      console.log("🃏 FINAL COMMUNITY CARDS:", this.room.communityCards);
-
-      this.room.state = GameState.SHOWDOWN;
-
-      console.log("🏆 ALL-IN → SHOWDOWN");
-
-      this.showdown();
-
+    // کمتر از ۲ نفر می‌توانند شرط ببندند → بورد را تا آخر پخش کن
+    if (this.isActionClosed()) {
+      this.runOutBoardAndShowdown();
       return;
     }
 
-    // =====================================================
     // ریست شرط‌های راند
-    // =====================================================
-
     this.room.players.forEach((p) => {
       p.currentBet = 0;
-
       (p as any).actedThisRound = false;
     });
-
     this.room.currentBet = 0;
 
-    // =====================================================
-    // تغییر وضعیت بازی
-    // =====================================================
-
+    // خیابان بعدی
     switch (this.room.state) {
       case GameState.PRE_FLOP:
         this.room.dealFlop();
-
         this.room.state = GameState.FLOP;
-
         break;
 
       case GameState.FLOP:
         this.room.dealTurn();
-
         this.room.state = GameState.TURN;
-
         break;
 
       case GameState.TURN:
         this.room.dealRiver();
-
         this.room.state = GameState.RIVER;
-
         break;
 
       case GameState.RIVER:
         this.room.state = GameState.SHOWDOWN;
-
         console.log("🏆 RIVER FINISHED → SHOWDOWN");
-
         this.showdown();
-
         return;
     }
 
-    // =====================================================
-    // پیدا کردن شروع کننده راند جدید
-    // =====================================================
-
+    // شروع‌کننده راند جدید (نزدیک‌ترین بازیکن فعال بعد از SB)
     const smallBlindIndex = this.room.players.findIndex((p) => p.smallBlind);
-
     let start =
       smallBlindIndex >= 0 ? smallBlindIndex : this.room.currentPlayerIndex;
 
     let count = 0;
-
     while (
-      this.room.players[start]?.folded &&
+      (this.room.players[start]?.folded ||
+        this.room.players[start]?.allIn) &&
       count < this.room.players.length
     ) {
       start = (start + 1) % this.room.players.length;
-
       count++;
     }
 
@@ -203,8 +214,6 @@ export default class PokerEngine {
     );
 
     this.onUpdate?.();
-
-    console.log("SET TURN TO:", this.getCurrentPlayer()?.username);
   }
 
   // =====================================================
@@ -212,10 +221,6 @@ export default class PokerEngine {
   // =====================================================
 
   playerAction(player: Player, action: PlayerAction, amount = 0) {
-    // =====================================================
-    // GAME FINISHED
-    // =====================================================
-
     if (
       this.room.state === GameState.SHOWDOWN ||
       this.room.state === GameState.FINISHED
@@ -230,104 +235,64 @@ export default class PokerEngine {
       player.username,
     );
 
-    // =====================================================
-    // ACTION
-    // =====================================================
-
     switch (action) {
-      // ---------------------------------------------------
-      // FOLD
-      // ---------------------------------------------------
-
       case PlayerAction.FOLD:
         player.fold();
-
         console.log("AFTER FOLD:", player.username, player.folded);
-
         break;
-
-      // ---------------------------------------------------
-      // CHECK
-      // ---------------------------------------------------
 
       case PlayerAction.CHECK:
         break;
-
-      // ---------------------------------------------------
-      // CALL
-      // ---------------------------------------------------
 
       case PlayerAction.CALL: {
         const highestBet = Math.max(
           ...this.room.players.map((p) => p.currentBet),
         );
-
         const callAmount = highestBet - player.currentBet;
 
         if (callAmount > 0) {
           const actualAmount = Math.min(callAmount, player.chips);
-
           player.bet(actualAmount);
-
           this.room.pot += actualAmount;
         }
-
         break;
       }
-
-      // ---------------------------------------------------
-      // RAISE
-      // ---------------------------------------------------
 
       case PlayerAction.RAISE: {
         const highestBet = Math.max(
           ...this.room.players.map((p) => p.currentBet),
         );
-
         const total = highestBet - player.currentBet + amount;
-
         const actualAmount = Math.min(total, player.chips);
 
         player.bet(actualAmount);
-
         this.room.pot += actualAmount;
-
         this.room.currentBet = Math.max(
           ...this.room.players.map((p) => p.currentBet),
         );
-
         break;
       }
 
-      // ---------------------------------------------------
-      // ALL IN
-      // ---------------------------------------------------
-
       case PlayerAction.ALL_IN: {
         const chips = player.chips;
-
         console.log("🔥 ALL IN:", player.username, "CHIPS:", chips);
 
         if (chips > 0) {
           player.bet(chips);
-
           this.room.pot += chips;
         }
 
         this.room.currentBet = Math.max(
           ...this.room.players.map((p) => p.currentBet),
         );
-
         break;
       }
     }
 
     player.lastAction = action;
-
     (player as any).actedThisRound = true;
 
     console.log("ACTION:", player.username, action);
-
     console.log(
       "PLAYER STATUS:",
       this.room.players.map((p) => ({
@@ -340,126 +305,75 @@ export default class PokerEngine {
       })),
     );
 
-    // =====================================================
-    // CHECK ACTIVE PLAYERS
-    // =====================================================
-
-    const activePlayers = this.room.players.filter((p) => !p.folded);
-
-    // =====================================================
-    // ONLY ONE PLAYER
-    // =====================================================
+    // ─── فقط یک بازیکن مانده ───
+    const activePlayers = this.getActivePlayers();
 
     if (activePlayers.length === 1) {
       const winner = activePlayers[0];
-
       this.room.winner = winner;
 
-      winner.chips += this.room.pot;
+      const wonAmount = this.room.pot;
+      winner.chips += wonAmount;
+      this.onWin?.(winner.id, wonAmount);
 
       this.room.pot = 0;
-
       this.room.state = GameState.SHOWDOWN;
 
       console.log("🏆 WINNER BY FOLD:", winner.username);
-
       this.onUpdate?.();
 
-      setTimeout(() => {
-        this.startNextHand();
-      }, 5000);
-
+      setTimeout(() => this.startNextHand(), 5000);
       return;
     }
 
-    // =====================================================
-    // ALL PLAYERS ALL-IN
-    //
-    // این مهم‌ترین قسمت است.
-    //
-    // اگر همه All-In شده‌اند، دیگر نباید منتظر
-    // nextTurn بمانیم.
-    // =====================================================
+    // ─── دیگر کسی نمی‌تواند شرط ببندد (All-In / Call All-In) ───
+    if (this.isActionClosed()) {
+      console.log("🔥 ACTION CLOSED (≤1 player can still act)");
+      this.onUpdate?.();
 
-    const allPlayersAllIn =
-      activePlayers.length > 1 && activePlayers.every((p) => p.allIn);
-
-    if (allPlayersAllIn) {
-      console.log("🔥🔥 ALL PLAYERS ARE ALL-IN");
-
-      // اگر هنوز River نرسیدیم،
-      // nextRound خودش تا River کارت‌ها را پخش می‌کند.
-
-      if (this.room.communityCards.length < 5) {
-        console.log("🃏 RUNNING REMAINING CARDS...");
-
-        this.onUpdate?.();
-
-        this.roundTimer = setTimeout(() => {
-          this.nextRound();
-        }, 800);
-
-        return;
-      }
-
-      // اگر River هستیم
-      this.room.state = GameState.SHOWDOWN;
-
-      console.log("🏆 ALL-IN ON RIVER → SHOWDOWN");
-
-      this.showdown();
-
+      this.roundTimer = setTimeout(() => {
+        this.runOutBoardAndShowdown();
+      }, 700);
       return;
     }
 
-    // =====================================================
-    // BETTING ROUND FINISHED
-    // =====================================================
-
+    // ─── راند شرط‌بندی تمام شده ───
     if (this.isBettingRoundFinished()) {
       console.log("🏁 ROUND FINISHED");
-
       this.onUpdate?.();
 
       this.roundTimer = setTimeout(() => {
         this.nextRound();
       }, 1000);
-
       return;
     }
 
-    // =====================================================
-    // NEXT TURN
-    // =====================================================
-
+    // ─── نوبت بعدی ───
     setTimeout(() => {
       this.nextTurn();
-
       this.onUpdate?.();
     }, 1700);
   }
 
   // =====================================================
-  // BETTING ROUND FINISHED
+  // BETTING ROUND FINISHED  (باگ All-In از راند قبل اینجا بود)
   // =====================================================
 
-  isBettingRoundFinished() {
-    const activePlayers = this.room.players.filter((p) => !p.folded);
+  isBettingRoundFinished(): boolean {
+    const activePlayers = this.getActivePlayers();
 
-    if (activePlayers.length <= 1) {
-      return true;
-    }
+    if (activePlayers.length <= 1) return true;
 
-    // اگر همه All-In هستند
-    if (activePlayers.every((p) => p.allIn)) {
-      return true;
-    }
+    // همه All-In → راند تمام
+    if (activePlayers.every((p) => p.allIn)) return true;
 
     const highestBet = Math.max(...activePlayers.map((p) => p.currentBet));
 
+    // All-Inها نیازی به actedThisRound ندارند
     return activePlayers.every(
       (p) =>
-        (p as any).actedThisRound && (p.currentBet === highestBet || p.allIn),
+        p.allIn ||
+        ((p as any).actedThisRound && p.currentBet === highestBet),
     );
   }
 
@@ -479,49 +393,31 @@ export default class PokerEngine {
       })),
     );
 
-    const activePlayers = this.room.players.filter((p) => !p.folded);
-
-    // =====================================================
-    // NO PLAYERS
-    // =====================================================
+    const activePlayers = this.getActivePlayers();
 
     if (activePlayers.length === 0) {
       console.log("❌ SHOWDOWN: NO ACTIVE PLAYERS");
-
       return;
     }
-
-    // =====================================================
-    // ONE PLAYER
-    // =====================================================
 
     if (activePlayers.length === 1) {
       const winner = activePlayers[0];
-
       this.room.winner = winner;
 
-      winner.chips += this.room.pot;
+      const wonAmount = this.room.pot;
+      winner.chips += wonAmount;
+      this.onWin?.(winner.id, wonAmount);
 
       this.room.pot = 0;
-
       console.log("🏆 SHOWDOWN WINNER:", winner.username);
-
       this.onUpdate?.();
 
-      setTimeout(() => {
-        this.startNextHand();
-      }, 5000);
-
+      setTimeout(() => this.startNextHand(), 5000);
       return;
     }
 
-    // =====================================================
-    // EVALUATE ALL ACTIVE PLAYERS
-    // =====================================================
-
     const results = activePlayers.map((player) => ({
       player,
-
       result: HandEvaluator.evaluate(player.hand, this.room.communityCards),
     }));
 
@@ -529,187 +425,95 @@ export default class PokerEngine {
       "🧠 HAND RESULTS:",
       results.map((item) => ({
         username: item.player.username,
-
         hand: item.player.hand,
-
         score: item.result.score,
-
         name: item.result.name,
-
         winningCards: item.result.winningCards,
       })),
     );
-
-    // =====================================================
-    // SORT BY SCORE
-    // =====================================================
 
     results.sort((a, b) => b.result.score - a.result.score);
 
     const winnerResult = results[0];
 
-    // =====================================================
-    // WINNER
-    // =====================================================
-
     this.room.winner = winnerResult.player;
-
     this.room.winnerHand = winnerResult.result.name;
-
     this.room.winnerCards = winnerResult.result.winningCards;
 
     console.log("🏆 WINNER:", winnerResult.player.username);
-
     console.log("🏆 WINNING HAND:", winnerResult.result.name);
 
-    console.log("🏆 WINNING CARDS:", winnerResult.result.winningCards);
-
-    // =====================================================
-    // PAY POT
-    // =====================================================
-
-    winnerResult.player.chips += this.room.pot;
-
-    console.log("💰 WINNER CHIPS:", winnerResult.player.chips);
-
-    console.log("💰 POT:", this.room.pot);
+    const wonAmount = this.room.pot;
+    winnerResult.player.chips += wonAmount;
+    this.onWin?.(winnerResult.player.id, wonAmount);
 
     this.room.pot = 0;
-
-    // =====================================================
-    // SHOWDOWN UPDATE
-    // =====================================================
-
     this.room.state = GameState.SHOWDOWN;
-
     this.onUpdate?.();
 
-    // =====================================================
-    // NEXT HAND
-    // =====================================================
-
-    setTimeout(() => {
-      this.startNextHand();
-    }, 15000);
+    setTimeout(() => this.startNextHand(), 15000);
   }
 
   // =====================================================
   // START NEXT HAND
   // =====================================================
 
- startNextHand() {
-  console.log("====================================");
-  console.log("🔄 START NEXT HAND");
+  startNextHand() {
+    console.log("====================================");
+    console.log("🔄 START NEXT HAND");
 
-  const playablePlayers = this.room.players.filter(
-    (player) => player.chips > 0
-  );
+    const playablePlayers = this.room.players.filter((p) => p.chips > 0);
 
-  console.log(
-    "👥 PLAYABLE:",
-    playablePlayers.map((p) => ({
-      id: p.id,
-      username: p.username,
-      chips: p.chips,
-    }))
-  );
-
-  // =====================================================
-  // کمتر از 2 بازیکن دارای چیپ
-  // =====================================================
-
-  if (playablePlayers.length < 2) {
-    console.log("🛑 NEXT HAND BLOCKED");
     console.log(
-      `⏳ ONLY ${playablePlayers.length} PLAYER(S) HAVE CHIPS`
+      "👥 PLAYABLE:",
+      playablePlayers.map((p) => ({
+        id: p.id,
+        username: p.username,
+        chips: p.chips,
+      })),
     );
 
-    // خیلی مهم
-    // دیگر startGame صدا زده نمی‌شود
-    this.room.state = GameState.WAITING;
+    if (playablePlayers.length < 2) {
+      console.log("🛑 NEXT HAND BLOCKED");
 
-    this.room.currentPlayerIndex = 0;
+      this.room.state = GameState.WAITING;
+      this.room.currentPlayerIndex = 0;
+      this.room.communityCards = [];
+      this.room.pot = 0;
+      this.room.currentBet = 0;
+      this.room.winner = null;
+      this.room.winnerHand = null;
+      this.room.winnerCards = [];
 
-    this.room.communityCards = [];
+      this.room.players.forEach((player) => {
+        player.clearHand();
+        player.currentBet = 0;
+        player.folded = false;
+        player.lastAction = null;
+        (player as any).actedThisRound = false;
+      });
 
-    this.room.pot = 0;
-
-    this.room.currentBet = 0;
-
-    this.room.winner = null;
-
-    this.room.winnerHand = null;
-
-    this.room.winnerCards = [];
+      this.onUpdate?.();
+      console.log("🟡 TABLE IS WAITING");
+      return;
+    }
 
     this.room.players.forEach((player) => {
-      player.clearHand();
-
-      player.currentBet = 0;
-
-      player.folded = false;
-
-      player.lastAction = null;
-
-      (player as any).actedThisRound = false;
+      if (player.chips <= 0) {
+        player.folded = true;
+      }
     });
 
+    this.room.winner = null;
+    this.room.winnerHand = null;
+    this.room.winnerCards = [];
+
+    this.room.nextDealer();
+    this.room.startGame();
     this.onUpdate?.();
 
-    console.log("🟡 TABLE IS WAITING FOR BUY-IN / LEAVE");
-    console.log("====================================");
-
-    return;
+    console.log("🎮 NEW HAND STARTED:", this.room.state);
   }
-
-  // =====================================================
-  // دو نفر یا بیشتر چیپ دارند
-  // =====================================================
-
-  console.log(
-    `✅ ${playablePlayers.length} PLAYERS CAN PLAY`
-  );
-
-  // بازیکنان بدون چیپ فعلاً بازی نمی‌کنند
-  this.room.players.forEach((player) => {
-    if (player.chips <= 0) {
-      player.folded = true;
-    }
-  });
-
-  // =====================================================
-  // پاک کردن Winner
-  // =====================================================
-
-  this.room.winner = null;
-
-  this.room.winnerHand = null;
-
-  this.room.winnerCards = [];
-
-  // =====================================================
-  // Dealer
-  // =====================================================
-
-  this.room.nextDealer();
-
-  // =====================================================
-  // شروع دست جدید
-  // =====================================================
-
-  console.log("🎮 STARTING NEW HAND");
-
-  this.room.startGame();
-
-  this.onUpdate?.();
-
-  console.log(
-    "🎮 NEW HAND STARTED:",
-    this.room.state
-  );
-
-  console.log("====================================");
-}
 
   // =====================================================
   // STOP
@@ -718,7 +522,6 @@ export default class PokerEngine {
   stop() {
     if (this.roundTimer) {
       clearTimeout(this.roundTimer);
-
       this.roundTimer = undefined;
     }
   }

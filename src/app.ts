@@ -3,6 +3,7 @@ import cors from "cors";
 
 import authRoutes from "./routes/auth.routes";
 import tableRoutes from "./routes/table.routes";
+import appRoutes from "./routes/app.routes";
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/table", tableRoutes);
+app.use("/api/app", appRoutes);
 
 app.get("/", (_, res) => {
   res.send("Poker Server");

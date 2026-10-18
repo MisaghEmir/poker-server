@@ -14,13 +14,36 @@ export const googleAuth = async (
   try {
     const { idToken } = req.body;
 
+    // =====================================================
+    // VALIDATION
+    // =====================================================
+
     if (!idToken) {
       return res.status(400).json({
         message: "Google ID token is required",
       });
     }
 
-    // Verify Google token
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      console.error("GOOGLE_CLIENT_ID is missing");
+
+      return res.status(500).json({
+        message: "Google authentication is not configured",
+      });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET is missing");
+
+      return res.status(500).json({
+        message: "JWT is not configured",
+      });
+    }
+
+    // =====================================================
+    // VERIFY GOOGLE TOKEN
+    // =====================================================
+
     const ticket = await client.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -39,7 +62,12 @@ export const googleAuth = async (
       email,
       name,
       picture,
+      email_verified,
     } = payload;
+
+    // =====================================================
+    // GOOGLE DATA VALIDATION
+    // =====================================================
 
     if (!googleId || !email) {
       return res.status(400).json({
@@ -47,30 +75,50 @@ export const googleAuth = async (
       });
     }
 
-    // پیدا کردن کاربر با Google ID
+    if (!email_verified) {
+      return res.status(401).json({
+        message: "Google email is not verified",
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // =====================================================
+    // FIND USER
+    // =====================================================
+
     let user = await User.findOne({
       googleId,
     });
 
-    // اگر با Google پیدا نشد،
-    // ایمیل را هم بررسی کن
+    // =====================================================
+    // FIND BY EMAIL
+    // =====================================================
+
     if (!user) {
       user = await User.findOne({
-        email: email.toLowerCase(),
+        email: cleanEmail,
       });
     }
 
-    // =========================
+    // =====================================================
     // CREATE USER
-    // =========================
+    // =====================================================
 
     if (!user) {
       let username =
-        name?.replace(/\s+/g, "_").toLowerCase() ||
+        name?.trim().replace(/\s+/g, "_").toLowerCase() ||
         `player_${Date.now()}`;
 
-      // username باید unique باشد
-      const usernameExists = await User.findOne({
+      // Remove characters that could cause problems
+      username = username.replace(/[^a-zA-Z0-9_]/g, "");
+
+      if (!username || username.length < 3) {
+        username = `player_${Date.now()}`;
+      }
+
+      // Make username unique
+      let usernameExists = await User.findOne({
         username,
       });
 
@@ -78,9 +126,35 @@ export const googleAuth = async (
         username = `${username}_${Date.now()}`;
       }
 
+      // ===================================================
+      // STARTER PACK
+      // ===================================================
+
+      const starterAvatars = [
+        "bot1",
+        "bot2",
+        "user",
+      ];
+
+      const starterCardDesigns = [
+        "AD",
+        "AH",
+        "AS",
+      ];
+
+      const starterTableBackgrounds = [
+        "default",
+        "green",
+      ];
+
+      // ===================================================
+      // CREATE
+      // ===================================================
+
       user = await User.create({
         username,
-        email: email.toLowerCase(),
+
+        email: cleanEmail,
 
         password: "",
 
@@ -88,22 +162,40 @@ export const googleAuth = async (
 
         authProvider: "google",
 
-        avatar: picture || "",
+        // Avatar
+        avatar: picture || "user",
 
-        chips: 200,
+        ownedAvatars: starterAvatars,
+
+        // Cards
+        ownedCardDesigns: starterCardDesigns,
+
+        activeCardDesign: "default",
+
+        // Table
+        ownedTableBackgrounds:
+          starterTableBackgrounds,
+
+        activeTableBackground: "default",
+
+        // Chips
+        chips: 300,
+
         chipsD: 0,
 
+        // Stats
         wins: 0,
         losses: 0,
         gamesPlayed: 0,
 
+        // Buy / Sell
         buysell: false,
       });
     }
 
-    // =========================
-    // UPDATE EXISTING USER
-    // =========================
+    // =====================================================
+    // LINK EXISTING ACCOUNT
+    // =====================================================
 
     if (!user.googleId) {
       user.googleId = googleId;
@@ -116,46 +208,83 @@ export const googleAuth = async (
       await user.save();
     }
 
-    // =========================
+    // =====================================================
     // CREATE JWT
-    // =========================
+    // =====================================================
 
     const token = jwt.sign(
       {
         userId: user._id.toString(),
       },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET,
       {
         expiresIn: "7d",
       }
     );
+
+    // =====================================================
+    // USER RESPONSE
+    // =====================================================
+
+    const userResponse = {
+      _id: user._id,
+
+      username: user.username,
+
+      email: user.email,
+
+      avatar: user.avatar,
+
+      ownedAvatars: user.ownedAvatars,
+
+      ownedCardDesigns: user.ownedCardDesigns,
+
+      ownedTableBackgrounds:
+        user.ownedTableBackgrounds,
+
+      activeCardDesign:
+        user.activeCardDesign,
+
+      activeTableBackground:
+        user.activeTableBackground,
+
+      chips: user.chips,
+
+      chipsD: user.chipsD,
+
+      wins: user.wins,
+
+      losses: user.losses,
+
+      gamesPlayed: user.gamesPlayed,
+
+      buysell: user.buysell,
+
+      googleId: user.googleId,
+
+      authProvider: user.authProvider,
+    };
+
+    // =====================================================
+    // RESPONSE
+    // =====================================================
 
     return res.status(200).json({
       message: "Google authentication successful",
 
       token,
 
-      user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-
-        chips: user.chips,
-        chipsD: user.chipsD,
-
-        wins: user.wins,
-        losses: user.losses,
-        gamesPlayed: user.gamesPlayed,
-
-        buysell: user.buysell,
-
-        googleId: user.googleId,
-        authProvider: user.authProvider,
-      },
+      user: userResponse,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GOOGLE AUTH ERROR:", error);
+
+    // Duplicate username/email
+    if (error?.code === 11000) {
+      return res.status(400).json({
+        message: "Username or email already exists",
+      });
+    }
 
     return res.status(401).json({
       message: "Google authentication failed",

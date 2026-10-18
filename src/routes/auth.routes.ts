@@ -43,7 +43,18 @@ import {
 // CHIPS
 // =====================================================
 
-import { deductChips, addChips } from "../controllers/chipsController";
+import {
+  deductChips,
+  addChips,
+} from "../controllers/chipsController";
+
+// =====================================================
+// RANKING
+// =====================================================
+
+import {
+  getChipRanking,
+} from "../controllers/rankingController";
 
 const router = Router();
 
@@ -63,53 +74,118 @@ router.get("/me", authMiddleware, me);
 // GIFT
 // =====================================================
 
-// Get all gifts
 router.get("/gift", authMiddleware, getGift);
 
-// Claim Free Gift
-router.post("/gift/free/claim", authMiddleware, claimFreeGift);
+router.post(
+  "/gift/free/claim",
+  authMiddleware,
+  claimFreeGift,
+);
 
-// Claim Silver / Gold / Diamond / Royal / Legendary
-router.post("/gift/claim", authMiddleware, claimGift);
+router.post(
+  "/gift/claim",
+  authMiddleware,
+  claimGift,
+);
 
-// Rewarded Video
-router.post("/gift/video", authMiddleware, rewardGiftVideo);
+router.post(
+  "/gift/video",
+  authMiddleware,
+  rewardGiftVideo,
+);
 
 // =====================================================
 // FREE CHIPS
 // =====================================================
 
-router.get("/free-chips", authMiddleware, getFreeChips);
+router.get(
+  "/free-chips",
+  authMiddleware,
+  getFreeChips,
+);
 
-router.post("/free-chips/claim", authMiddleware, claimFreeChips);
+router.post(
+  "/free-chips/claim",
+  authMiddleware,
+  claimFreeChips,
+);
 
 // =====================================================
 // SHOP
 // =====================================================
 
-router.get("/shop", authMiddleware, getShop);
+router.get(
+  "/shop",
+  authMiddleware,
+  getShop,
+);
 
 // Avatar
-router.post("/shop/avatar/buy", authMiddleware, buyAvatar);
 
-router.post("/shop/avatar/select", authMiddleware, selectAvatar);
+router.post(
+  "/shop/avatar/buy",
+  authMiddleware,
+  buyAvatar,
+);
+
+router.post(
+  "/shop/avatar/select",
+  authMiddleware,
+  selectAvatar,
+);
 
 // Card
-router.post("/shop/card/buy", authMiddleware, buyCardDesign);
 
-router.post("/shop/card/select", authMiddleware, selectCardDesign);
+router.post(
+  "/shop/card/buy",
+  authMiddleware,
+  buyCardDesign,
+);
+
+router.post(
+  "/shop/card/select",
+  authMiddleware,
+  selectCardDesign,
+);
 
 // Background
-router.post("/shop/background/buy", authMiddleware, buyTableBackground);
 
-router.post("/shop/background/select", authMiddleware, selectTableBackground);
+router.post(
+  "/shop/background/buy",
+  authMiddleware,
+  buyTableBackground,
+);
+
+router.post(
+  "/shop/background/select",
+  authMiddleware,
+  selectTableBackground,
+);
 
 // =====================================================
 // CHIPS
 // =====================================================
 
-router.post("/chips/deduct", authMiddleware, deductChips);
+router.post(
+  "/chips/deduct",
+  authMiddleware,
+  deductChips,
+);
 
-router.post("/chips/add", authMiddleware, addChips);
+router.post(
+  "/chips/add",
+  authMiddleware,
+  addChips,
+);
+
+// =====================================================
+// CHIP RANKING
+// =====================================================
+
+router.get(
+  "/ranking/chips",
+  authMiddleware,
+  getChipRanking,
+);
 
 export default router;

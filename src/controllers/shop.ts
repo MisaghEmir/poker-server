@@ -8,10 +8,13 @@ import { AuthRequest } from "../middleware/authMiddleware";
 
 const AVATARS: Record<string, number> = {
   avatar1: 0,
-  avatar2: 5000,
-  avatar3: 10000,
-  avatar4: 15000,
-  avatar5: 25000,
+  avatar2: 0,
+  avatar3: 0,
+  avatar4: 500,
+  avatar5: 1000,
+  avatar6: 1500,
+  avatar7: 2000,
+  avatar8: 3000,
 };
 
 const CARD_DESIGNS: Record<string, number> = {
@@ -21,23 +24,20 @@ const CARD_DESIGNS: Record<string, number> = {
   black: 20000,
   royal: 30000,
 };
-
 const TABLE_BACKGROUNDS: Record<string, number> = {
   default: 0,
-  red: 10000,
+  red: 300,
   blue: 15000,
   purple: 20000,
   gold: 30000,
+  dark: 50000,
 };
 
 // =====================================================
 // GET SHOP
 // =====================================================
 
-export const getShop = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const getShop = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -56,14 +56,11 @@ export const getShop = async (
 
       ownedCardDesigns: user.ownedCardDesigns,
 
-      ownedTableBackgrounds:
-        user.ownedTableBackgrounds,
+      ownedTableBackgrounds: user.ownedTableBackgrounds,
 
-      activeCardDesign:
-        user.activeCardDesign,
+      activeCardDesign: user.activeCardDesign,
 
-      activeTableBackground:
-        user.activeTableBackground,
+      activeTableBackground: user.activeTableBackground,
 
       items: {
         avatars: AVATARS,
@@ -84,10 +81,7 @@ export const getShop = async (
 // BUY AVATAR
 // =====================================================
 
-export const buyAvatar = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const buyAvatar = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -145,10 +139,7 @@ export const buyAvatar = async (
 // SELECT AVATAR
 // =====================================================
 
-export const selectAvatar = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const selectAvatar = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -188,10 +179,7 @@ export const selectAvatar = async (
 // BUY CARD DESIGN
 // =====================================================
 
-export const buyCardDesign = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const buyCardDesign = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -234,14 +222,10 @@ export const buyCardDesign = async (
 
       chips: user.chips,
 
-      ownedCardDesigns:
-        user.ownedCardDesigns,
+      ownedCardDesigns: user.ownedCardDesigns,
     });
   } catch (error) {
-    console.error(
-      "BUY CARD DESIGN ERROR:",
-      error
-    );
+    console.error("BUY CARD DESIGN ERROR:", error);
 
     return res.status(500).json({
       message: "Server error",
@@ -253,10 +237,7 @@ export const buyCardDesign = async (
 // SELECT CARD DESIGN
 // =====================================================
 
-export const selectCardDesign = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const selectCardDesign = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -281,14 +262,10 @@ export const selectCardDesign = async (
     return res.json({
       message: "Card design selected",
 
-      activeCardDesign:
-        user.activeCardDesign,
+      activeCardDesign: user.activeCardDesign,
     });
   } catch (error) {
-    console.error(
-      "SELECT CARD DESIGN ERROR:",
-      error
-    );
+    console.error("SELECT CARD DESIGN ERROR:", error);
 
     return res.status(500).json({
       message: "Server error",
@@ -300,10 +277,7 @@ export const selectCardDesign = async (
 // BUY TABLE BACKGROUND
 // =====================================================
 
-export const buyTableBackground = async (
-  req: AuthRequest,
-  res: Response
-) => {
+export const buyTableBackground = async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user;
 
@@ -314,9 +288,12 @@ export const buyTableBackground = async (
     }
 
     const { backgroundId } = req.body;
+    console.log("🛒 BACKGROUND BUY:", {
+      backgroundId,
+      available: Object.keys(TABLE_BACKGROUNDS),
+    });
 
-    const price =
-      TABLE_BACKGROUNDS[backgroundId];
+    const price = TABLE_BACKGROUNDS[backgroundId];
 
     if (price === undefined) {
       return res.status(400).json({
@@ -324,11 +301,7 @@ export const buyTableBackground = async (
       });
     }
 
-    if (
-      user.ownedTableBackgrounds.includes(
-        backgroundId
-      )
-    ) {
+    if (user.ownedTableBackgrounds.includes(backgroundId)) {
       return res.status(400).json({
         message: "Background already owned",
       });
@@ -342,9 +315,7 @@ export const buyTableBackground = async (
 
     user.chips -= price;
 
-    user.ownedTableBackgrounds.push(
-      backgroundId
-    );
+    user.ownedTableBackgrounds.push(backgroundId);
 
     await user.save();
 
@@ -353,14 +324,10 @@ export const buyTableBackground = async (
 
       chips: user.chips,
 
-      ownedTableBackgrounds:
-        user.ownedTableBackgrounds,
+      ownedTableBackgrounds: user.ownedTableBackgrounds,
     });
   } catch (error) {
-    console.error(
-      "BUY BACKGROUND ERROR:",
-      error
-    );
+    console.error("BUY BACKGROUND ERROR:", error);
 
     return res.status(500).json({
       message: "Server error",
@@ -374,7 +341,7 @@ export const buyTableBackground = async (
 
 export const selectTableBackground = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
 ) => {
   try {
     const user = req.user;
@@ -387,32 +354,23 @@ export const selectTableBackground = async (
 
     const { backgroundId } = req.body;
 
-    if (
-      !user.ownedTableBackgrounds.includes(
-        backgroundId
-      )
-    ) {
+    if (!user.ownedTableBackgrounds.includes(backgroundId)) {
       return res.status(400).json({
         message: "Background not owned",
       });
     }
 
-    user.activeTableBackground =
-      backgroundId;
+    user.activeTableBackground = backgroundId;
 
     await user.save();
 
     return res.json({
       message: "Background selected",
 
-      activeTableBackground:
-        user.activeTableBackground,
+      activeTableBackground: user.activeTableBackground,
     });
   } catch (error) {
-    console.error(
-      "SELECT BACKGROUND ERROR:",
-      error
-    );
+    console.error("SELECT BACKGROUND ERROR:", error);
 
     return res.status(500).json({
       message: "Server error",

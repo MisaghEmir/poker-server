@@ -329,7 +329,7 @@ export const claimFreeGift = async (req: AuthRequest, res: Response) => {
 
 export const claimGift = async (req: AuthRequest, res: Response) => {
   try {
-    const { gift } = req.body;
+   const { gift } = req.body || {};
 
     // ---------------------------------------------------
     // Validate gift

@@ -1,4 +1,6 @@
 import { Server, Socket } from "socket.io";
+import User from "../models/User";
+
 import Room from "../game/Room";
 import PokerEngine from "../game/PokerEngine";
 import PokerBot from "../game/bots/PokerBot";
@@ -24,64 +26,161 @@ export function pokerGameSocket(io: Server) {
   io.on("connection", (socket: Socket) => {
     console.log("socket:", socket.id);
 
-    socket.on("join-game-bot", ({ roomId, userId, username,chip }) => {
-      let game = games.get(roomId);
+    // =====================================================
+    // JOIN BOT GAME
+    // =====================================================
 
-      if (!game) {
-        const room = new Room(roomId);
+    socket.on(
+      "join-game-bot",
+      ({ roomId, userId, username, chip, smallBlind, bigBlind }) => {
+        let game = games.get(roomId);
 
-        const bots = [
-          new PokerBot("bot1", "Ali", "tight"),
-          new PokerBot("bot2", "Sara", "aggressive"),
-          new PokerBot("bot3", "Reza", "balanced"),
-          new PokerBot("bot4", "Mina", "loose"),
-        ];
+        console.log("🟢 SMALL BLIND:", smallBlind);
+        console.log("🔵 BIG BLIND:", bigBlind);
 
-        bots.forEach((bot) => {
-          room.addPlayer(bot);
+        if (!game) {
+          const room = new Room(roomId, smallBlind, bigBlind);
+
+          function getRandomBotChips(
+            smallBlind: number,
+            bigBlind: number,
+          ): number {
+            const tableRanges: Record<string, { min: number; max: number }> = {
+              "1/2": { min: 40, max: 200 },
+              "2/4": { min: 80, max: 400 },
+              "5/10": { min: 200, max: 1000 },
+              "10/20": { min: 800, max: 4000 },
+              "20/40": { min: 2000, max: 5000 },
+            };
+
+            const key = `${Number(smallBlind)}/${Number(bigBlind)}`;
+
+            const range = tableRanges[key];
+
+            if (!range) {
+              throw new Error(`Unknown poker table stakes: ${key}`);
+            }
+
+            return (
+              Math.floor(Math.random() * (range.max - range.min)) 
+              
+            );
+          }
+
+          const bots = [
+            new PokerBot(
+              "bot1",
+              "Oliver",
+              "tight",
+              getRandomBotChips(smallBlind, bigBlind),
+            ),
+            new PokerBot(
+              "bot2",
+              "Emily",
+              "aggressive",
+              getRandomBotChips(smallBlind, bigBlind),
+            ),
+            new PokerBot(
+              "bot3",
+              "Dante",
+              "balanced",
+              getRandomBotChips(smallBlind, bigBlind),
+            ),
+            new PokerBot(
+              "bot4",
+              "Zoe",
+              "loose",
+              getRandomBotChips(smallBlind, bigBlind),
+            ),
+          ];
+
+          console.log(
+            "🤖 BOT CHIPS:",
+            bots.map((bot) => ({
+              username: bot.username,
+              chips: bot.chips,
+            })),
+          );
+
+          console.log(
+            "🤖 BOT INITIAL CHIPS:",
+            bots.map((bot) => ({
+              username: bot.username,
+              chips: bot.chips,
+            })),
+          );
+
+          bots.forEach((bot) => {
+            room.addPlayer(bot);
+          });
+
+          const engine = new PokerEngine(room);
+
+          engine.onUpdate = () => {
+            emitGameUpdate(io, roomId, room);
+
+            setTimeout(() => {
+              checkBotTurn(io, roomId, {
+                room,
+                engine,
+              });
+            }, 100);
+          };
+
+          game = {
+            room,
+            engine,
+          };
+
+          games.set(roomId, game);
+        }
+
+        // =================================================
+        // EXISTING PLAYER
+        // =================================================
+
+        const existPlayer = game.room.players.find(
+          (p) => String(p.id) === String(userId),
+        );
+
+        // =================================================
+        // ADD NEW PLAYER
+        // =================================================
+
+        if (!existPlayer) {
+          const player = new Player(userId, username, Number(chip));
+
+          game.room.addPlayer(player);
+        }
+
+        // =================================================
+        // SOCKET USER
+        // =================================================
+
+        socketUsers.set(socket.id, userId);
+
+        socket.join(roomId);
+
+        // =================================================
+        // JOIN SUCCESS
+        // =================================================
+
+        socket.emit("join-success", {
+          roomId,
+
+          players: game.room.players.map((p) => ({
+            id: p.id,
+            username: p.username,
+            chips: p.chips,
+            isBot: (p as any).isBot ?? false,
+          })),
         });
+      },
+    );
 
-        const engine = new PokerEngine(room);
-
-        engine.onUpdate = () => {
-          emitGameUpdate(io, roomId, room);
-
-          setTimeout(() => {
-            checkBotTurn(io, roomId, { room, engine });
-          }, 100);
-        };
-
-        game = {
-          room,
-          engine,
-        };
-
-        games.set(roomId, game);
-      }
-
-      const existPlayer = game.room.players.find((p) => p.id === userId);
-
-      if (!existPlayer) {
-        const player = new Player(userId, username,chip);
-
-        game.room.addPlayer(player);
-      }
-
-      socketUsers.set(socket.id, userId);
-
-      socket.join(roomId);
-
-      socket.emit("join-success", {
-        roomId,
-
-        players: game.room.players.map((p) => ({
-          id: p.id,
-          username: p.username,
-          chips: p.chips,
-          isBot: (p as any).isBot ?? false,
-        })),
-      });
-    });
+    // =====================================================
+    // START GAME
+    // =====================================================
 
     socket.on("start-game-bot", ({ roomId, userId }) => {
       const game = games.get(roomId);
@@ -91,7 +190,7 @@ export function pokerGameSocket(io: Server) {
       game.room.startGame();
 
       console.log("GAME START:", roomId);
-      //
+
       socket.emit("game-start", serialize(game.room, userId));
 
       socket.to(roomId).emit("game-start", serialize(game.room));
@@ -99,16 +198,24 @@ export function pokerGameSocket(io: Server) {
       checkBotTurn(io, roomId, game);
     });
 
+    // =====================================================
+    // PLAYER ACTION
+    // =====================================================
+
     socket.on("action", ({ roomId, userId, action, amount }) => {
       const game = games.get(roomId);
 
       if (!game) return;
 
-      const player = game.room.players.find((p) => p.id === userId);
+      const player = game.room.players.find(
+        (p) => String(p.id) === String(userId),
+      );
 
       if (!player) return;
 
-      if (game.engine.getCurrentPlayer().id !== userId) return;
+      if (game.engine.getCurrentPlayer()?.id !== userId) {
+        return;
+      }
 
       const timer = turnTimers.get(roomId);
 
@@ -129,16 +236,218 @@ export function pokerGameSocket(io: Server) {
       }, 700);
     });
 
-    socket.on("leave-game-bot", ({ roomId }) => {
-      removePlayer(socket, io);
-    });
-    socket.on("disconnect", () => {
-      console.log("DISCONNECT:", socket.id);
+    // =====================================================
+    // ADD CHIPS
+    // =====================================================
 
-      removePlayer(socket, io);
+    socket.on("add-chips-bot", async ({ roomId, userId, amount }) => {
+      try {
+        console.log("\n💰 ================= ADD CHIPS =================");
+
+        console.log("ROOM:", roomId);
+
+        console.log("USER:", userId);
+
+        console.log("AMOUNT:", amount);
+
+        // =============================================
+        // GAME
+        // =============================================
+
+        const game = games.get(roomId);
+
+        if (!game) {
+          socket.emit("add-chips-error", {
+            message: "Game not found.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // VALIDATE USER
+        // =============================================
+
+        if (!userId) {
+          socket.emit("add-chips-error", {
+            message: "User not found.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // CHECK SOCKET USER
+        // =============================================
+
+        const socketUserId = socketUsers.get(socket.id);
+
+        if (String(socketUserId) !== String(userId)) {
+          socket.emit("add-chips-error", {
+            message: "Unauthorized.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // AMOUNT
+        // =============================================
+
+        const addAmount = Number(amount);
+
+        if (
+          !Number.isFinite(addAmount) ||
+          !Number.isInteger(addAmount) ||
+          addAmount <= 0
+        ) {
+          socket.emit("add-chips-error", {
+            message: "Invalid chip amount.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // FIND PLAYER
+        // =============================================
+
+        const player = game.room.players.find(
+          (p) => String(p.id) === String(userId),
+        );
+
+        if (!player) {
+          socket.emit("add-chips-error", {
+            message: "Player is not in this table.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // BOT CHECK
+        // =============================================
+
+        if (player instanceof PokerBot) {
+          socket.emit("add-chips-error", {
+            message: "Bots cannot add chips.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // DEDUCT FROM USER ACCOUNT
+        //
+        // ATOMIC OPERATION
+        // =============================================
+
+        const updatedUser = await User.findOneAndUpdate(
+          {
+            _id: userId,
+
+            chips: {
+              $gte: addAmount,
+            },
+          },
+          {
+            $inc: {
+              chips: -addAmount,
+            },
+          },
+          {
+            new: true,
+          },
+        );
+
+        // =============================================
+        // NOT ENOUGH ACCOUNT CHIPS
+        // =============================================
+
+        if (!updatedUser) {
+          console.log("❌ NOT ENOUGH ACCOUNT CHIPS");
+
+          socket.emit("add-chips-error", {
+            message: "Not enough chips.",
+          });
+
+          return;
+        }
+
+        // =============================================
+        // ADD TO TABLE
+        // =============================================
+
+        player.chips += addAmount;
+
+        console.log("✅ ADD CHIPS SUCCESS");
+
+        console.log("👤 PLAYER:", player.username);
+
+        console.log("➕ ADDED:", addAmount);
+
+        console.log("🎰 TABLE CHIPS:", player.chips);
+
+        console.log("💰 ACCOUNT CHIPS:", updatedUser.chips);
+
+        // =============================================
+        // SUCCESS EVENT
+        // =============================================
+
+        socket.emit("add-chips-success", {
+          amount: addAmount,
+
+          tableChips: player.chips,
+
+          accountChips: updatedUser.chips,
+        });
+
+        // =============================================
+        // UPDATE EVERY PLAYER
+        // =============================================
+
+        emitGameUpdate(io, roomId, game.room);
+
+        console.log("================================================\n");
+      } catch (error) {
+        console.error("❌ ADD CHIPS ERROR:", error);
+
+        socket.emit("add-chips-error", {
+          message: "Failed to add chips.",
+        });
+      }
+    });
+
+    // =====================================================
+    // NORMAL LEAVE
+    // =====================================================
+
+    socket.on("leave-game-bot", ({ roomId }) => {
+      console.log("🚪 NORMAL LEAVE:", socket.id, roomId);
+
+      // خروج عادی:
+      // BotScreen قبلاً چیپ‌ها را با API برگردانده است.
+      // بنابراین اینجا دوباره refund نمی‌کنیم.
+      removePlayer(socket, io, false);
+    });
+
+    // =====================================================
+    // DISCONNECT
+    // =====================================================
+
+    socket.on("disconnect", async () => {
+      console.log("🔴 DISCONNECT:", socket.id);
+
+      // disconnect غیرعادی:
+      // چیپ باقی‌مانده داخل میز باید به حساب کاربر برگردد.
+      await removePlayer(socket, io, true);
     });
   });
 }
+
+// =========================================================
+// BOT TURN
+// =========================================================
 
 async function checkBotTurn(
   io: Server,
@@ -149,40 +458,29 @@ async function checkBotTurn(
   },
 ) {
   if (game.room.state === GameState.SHOWDOWN) {
-    // console.log("HAND FINISHED");
     return;
   }
-  //
+
   const player = game.engine.getCurrentPlayer();
 
   if (!player) return;
 
-  // console.log("TURN:", player.username);
+  // =======================================================
+  // HUMAN TURN
+  // =======================================================
 
   if (!(player instanceof PokerBot)) {
-    // console.log("HUMAN TURN");
-
     io.to(roomId).emit("turn-start", {
       playerId: player.id,
       seconds: 10,
     });
 
-    // const timer = setTimeout(() => {
-    //   if (game.engine.getCurrentPlayer().id !== player.id) return;
-
-    //   console.log("AUTO FOLD:", player.username);
-
-    //   game.engine.playerAction(player, PlayerAction.FOLD);
-
-    //   emitGameUpdate(io, roomId, game.room);
-
-    //   checkBotTurn(io, roomId, game);
-    // }, 10000);
-
-    // turnTimers.set(roomId, timer);
-
     return;
   }
+
+  // =======================================================
+  // BOT TIMER
+  // =======================================================
 
   const oldTimer = botTimers.get(roomId);
 
@@ -213,25 +511,24 @@ async function checkBotTurn(
   const currentPlayerId = player.id;
 
   const timer = setTimeout(async () => {
-    if (game.engine.getCurrentPlayer().id !== currentPlayerId) {
+    if (game.engine.getCurrentPlayer()?.id !== currentPlayerId) {
       console.log("OLD TIMER STOP:", player.username);
+
       return;
     }
 
     if (game.room.state === GameState.SHOWDOWN) {
       console.log("CHECKBOT SHOWDOWN");
+
       return;
     }
 
     const move = await player.think(game.engine);
 
-    // console.log("BOT MOVE:", player.username, move);
-
     game.engine.playerAction(player, move.action, move.amount);
 
     emitGameUpdate(io, roomId, game.room);
 
-    // 700ms صبر برای انیمیشن
     await new Promise((resolve) => setTimeout(resolve, 700));
 
     checkBotTurn(io, roomId, game);
@@ -240,10 +537,14 @@ async function checkBotTurn(
   botTimers.set(roomId, timer);
 }
 
+// =========================================================
+// GAME UPDATE
+// =========================================================
+
 function emitGameUpdate(io: Server, roomId: string, room: Room) {
   room.players.forEach((player) => {
     const socketId = [...socketUsers.entries()].find(
-      ([_, userId]) => userId === player.id,
+      ([_, userId]) => String(userId) === String(player.id),
     )?.[0];
 
     if (socketId) {
@@ -251,6 +552,10 @@ function emitGameUpdate(io: Server, roomId: string, room: Room) {
     }
   });
 }
+
+// =========================================================
+// SERIALIZE
+// =========================================================
 
 function serialize(room: Room, userId?: string) {
   return {
@@ -265,11 +570,15 @@ function serialize(room: Room, userId?: string) {
     winner: room.winner
       ? {
           id: room.winner.id,
+
           username: room.winner.username,
+
           hand: room.winnerHand,
+
           winnerCards: room.winnerCards,
         }
       : null,
+
     players: room.players.map((p) => ({
       id: p.id,
 
@@ -282,6 +591,7 @@ function serialize(room: Room, userId?: string) {
       folded: p.folded,
 
       currentBet: p.currentBet,
+
       lastAction: p.lastAction,
 
       dealer: p.dealer,
@@ -297,64 +607,182 @@ function serialize(room: Room, userId?: string) {
   };
 }
 
-function removePlayer(socket: Socket, io: Server) {
+// =========================================================
+// REMOVE PLAYER
+// =========================================================
+
+async function removePlayer(socket: Socket, io: Server, shouldRefund = false) {
   const userId = socketUsers.get(socket.id);
 
-  if (!userId) return;
-
-  socketUsers.delete(socket.id);
-
-  for (const [roomId, game] of games.entries()) {
-    const index = game.room.players.findIndex((p) => p.id === userId);
-
-    if (index === -1) continue;
-
-    // اگر نوبت خودش بود فولد شود
-    if (game.engine.getCurrentPlayer()?.id === userId) {
-      game.engine.playerAction(game.room.players[index], PlayerAction.FOLD);
-    }
-
-    // حذف بازیکن
-    game.room.removePlayer(userId);
-
-    // آیا بازیکن واقعی مانده؟
-    const humanPlayers = game.room.players.filter((p) => !(p as any).isBot);
-
-    if (humanPlayers.length === 0) {
-      console.log("STOP GAME:", roomId);
-
-      // توقف تایمر راند
-      if (game.engine.roundTimer) {
-        clearTimeout(game.engine.roundTimer);
-        game.engine.roundTimer = undefined;
-      }
-
-      // توقف تایمر بات
-      const botTimer = botTimers.get(roomId);
-      if (botTimer) {
-        clearTimeout(botTimer);
-        botTimers.delete(roomId);
-      }
-
-      // توقف تایمر نوبت
-      const turnTimer = turnTimers.get(roomId);
-      if (turnTimer) {
-        clearTimeout(turnTimer);
-        turnTimers.delete(roomId);
-      }
-
-      // حذف بازی از حافظه
-      games.delete(roomId);
-
-      return;
-    }
-
-    // آپدیت برای بازیکنان باقی‌مانده
-    emitGameUpdate(io, roomId, game.room);
-
-    // ادامه بازی
-    checkBotTurn(io, roomId, game);
+  if (!userId) {
+    console.log("⚠️ REMOVE PLAYER → USER NOT FOUND:", socket.id);
 
     return;
   }
+
+  // ================================================
+  // FIND GAME + PLAYER BEFORE DELETE
+  // ================================================
+
+  let targetGame:
+    | {
+        room: Room;
+        engine: PokerEngine;
+      }
+    | undefined;
+
+  let targetRoomId: string | undefined;
+
+  let playerIndex = -1;
+
+  for (const [roomId, game] of games.entries()) {
+    const index = game.room.players.findIndex(
+      (p) => String(p.id) === String(userId),
+    );
+
+    if (index !== -1) {
+      targetGame = game;
+      targetRoomId = roomId;
+      playerIndex = index;
+      break;
+    }
+  }
+
+  if (!targetGame || !targetRoomId || playerIndex === -1) {
+    socketUsers.delete(socket.id);
+
+    console.log("⚠️ PLAYER GAME NOT FOUND:", userId);
+
+    return;
+  }
+
+  const player = targetGame.room.players[playerIndex];
+
+  // ================================================
+  // REFUND ON UNEXPECTED DISCONNECT
+  // ================================================
+
+  if (shouldRefund && !(player instanceof PokerBot)) {
+    const refundAmount = Math.max(0, Math.floor(Number(player.chips)));
+
+    if (refundAmount > 0) {
+      try {
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          {
+            $inc: {
+              chips: refundAmount,
+            },
+          },
+          {
+            new: true,
+          },
+        );
+
+        if (updatedUser) {
+          console.log(
+            "💰 ================= DISCONNECT REFUND =================",
+          );
+
+          console.log("👤 USER:", userId);
+
+          console.log("🎰 ROOM:", targetRoomId);
+
+          console.log("↩️ REFUNDED:", refundAmount);
+
+          console.log("💰 ACCOUNT CHIPS:", updatedUser.chips);
+
+          console.log(
+            "========================================================",
+          );
+        } else {
+          console.log("❌ DISCONNECT REFUND → USER NOT FOUND:", userId);
+        }
+      } catch (error) {
+        console.error("❌ DISCONNECT REFUND ERROR:", error);
+      }
+    } else {
+      console.log("ℹ️ DISCONNECT REFUND → NOTHING TO RETURN:", userId);
+    }
+  }
+
+  // ================================================
+  // REMOVE SOCKET USER
+  // ================================================
+
+  socketUsers.delete(socket.id);
+
+  // ================================================
+  // FOLD IF CURRENT PLAYER
+  // ================================================
+
+  if (targetGame.engine.getCurrentPlayer()?.id === userId) {
+    targetGame.engine.playerAction(player, PlayerAction.FOLD);
+  }
+
+  // ================================================
+  // REMOVE PLAYER
+  // ================================================
+
+  targetGame.room.removePlayer(userId);
+
+  // ================================================
+  // HUMAN PLAYERS
+  // ================================================
+
+  const humanPlayers = targetGame.room.players.filter((p) => !(p as any).isBot);
+
+  if (humanPlayers.length === 0) {
+    console.log("STOP GAME:", targetRoomId);
+
+    // ==============================================
+    // ROUND TIMER
+    // ==============================================
+
+    if (targetGame.engine.roundTimer) {
+      clearTimeout(targetGame.engine.roundTimer);
+
+      targetGame.engine.roundTimer = undefined;
+    }
+
+    // ==============================================
+    // BOT TIMER
+    // ==============================================
+
+    const botTimer = botTimers.get(targetRoomId);
+
+    if (botTimer) {
+      clearTimeout(botTimer);
+
+      botTimers.delete(targetRoomId);
+    }
+
+    // ==============================================
+    // TURN TIMER
+    // ==============================================
+
+    const turnTimer = turnTimers.get(targetRoomId);
+
+    if (turnTimer) {
+      clearTimeout(turnTimer);
+
+      turnTimers.delete(targetRoomId);
+    }
+
+    // ==============================================
+    // DELETE GAME
+    // ==============================================
+
+    games.delete(targetRoomId);
+
+    return;
+  }
+
+  // ================================================
+  // UPDATE REMAINING PLAYERS
+  // ================================================
+
+  emitGameUpdate(io, targetRoomId, targetGame.room);
+
+  checkBotTurn(io, targetRoomId, targetGame);
 }

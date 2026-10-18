@@ -5,6 +5,7 @@ import Player from "../game/Player";
 import { PlayerAction } from "../game/PlayerAction";
 import { GameState } from "../game/GameState";
 import Table from "../models/Table";
+import User from "../models/User";
 import mongoose from "mongoose";
 
 // =====================================================
@@ -40,7 +41,7 @@ export function onlineGameSocket(io: Server) {
 
     socket.on(
       "join-online-table",
-      async ({ tableId, userId, username, chips }) => {
+      async ({ tableId, userId, username, chips, bigBlind, smallBlind }) => {
         try {
           console.log("🔥 JOIN ONLINE TABLE:", {
             tableId,
@@ -48,6 +49,8 @@ export function onlineGameSocket(io: Server) {
             username,
             chips,
             socketId: socket.id,
+            smallBlind,
+            bigBlind,
           });
 
           // =====================================================
@@ -74,6 +77,27 @@ export function onlineGameSocket(io: Server) {
             const room = new Room(tableId);
 
             const engine = new PokerEngine(room);
+
+            engine.onWin = (playerId, amount) => {
+              const player = room.players.find((p) => p.id === playerId);
+
+              if (!player || (player as any).isBot) {
+                return;
+              }
+
+              User.findByIdAndUpdate(playerId, {
+                $inc: { totalWon: amount },
+              })
+                .then(() => {
+                  console.log("🏆 TOTAL WON UPDATED:", {
+                    playerId,
+                    amount,
+                  });
+                })
+                .catch((error) => {
+                  console.error("❌ TOTAL WON UPDATE ERROR:", error);
+                });
+            };
 
             engine.onUpdate = () => {
               emitGameUpdate(io, tableId, room);
