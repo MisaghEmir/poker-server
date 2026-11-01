@@ -1,24 +1,19 @@
 import { Server } from "socket.io";
 
 import { pokerGameSocket } from "./bot.socket";
+import { pokerGameWebSocket } from "./pokerGameWebSocket";
 import { tableSocket } from "./table.socket";
 import { onlineGameSocket } from "./onlineGameSocket";
 import { privateGameSocket } from "./privateTableSocket";
 
 export function registerSockets(io: Server) {
-  // ================================
-  // GENERAL CONNECTION / PING
-  // ================================
-
   io.on("connection", (socket) => {
     console.log("🟢 SOCKET CONNECTED:", socket.id);
 
     socket.on(
       "connection-ping",
-      (clientTime: number, callback?: () => void) => {
-        if (callback) {
-          callback();
-        }
+      (_clientTime: number, callback?: () => void) => {
+        callback?.();
       },
     );
 
@@ -30,12 +25,12 @@ export function registerSockets(io: Server) {
     });
   });
 
-  // ================================
   // GAME SOCKETS
-  // ================================
-
   tableSocket(io);
   pokerGameSocket(io);
+  pokerGameWebSocket(io);
   onlineGameSocket(io);
   privateGameSocket(io);
+
+  console.log("✅ ALL SOCKETS REGISTERED");
 }
