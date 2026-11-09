@@ -488,25 +488,25 @@ async function checkBotTurn(
     clearTimeout(oldTimer);
   }
 
-  let thinkTime = 3000;
+ let thinkTime = 1000;
 
-  switch (player.style) {
-    case "tight":
-      thinkTime = 5000 + Math.random() * 5000;
-      break;
+switch (player.style) {
+  case "tight":
+    thinkTime = 2500 + Math.random() * 1000;
+    break;
 
-    case "aggressive":
-      thinkTime = 2000 + Math.random() * 3000;
-      break;
+  case "aggressive":
+    thinkTime = 1500 + Math.random() * 700;
+    break;
 
-    case "balanced":
-      thinkTime = 4000 + Math.random() * 5000;
-      break;
+  case "balanced":
+    thinkTime = 2000 + Math.random() * 1000;
+    break;
 
-    case "loose":
-      thinkTime = 5000 + Math.random() * 7000;
-      break;
-  }
+  case "loose":
+    thinkTime = 2000 + Math.random() * 2000;
+    break;
+}
 
   const currentPlayerId = player.id;
 
